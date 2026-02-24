@@ -92,6 +92,9 @@ services:
   # CHATMAIL RELAY - Privacy-focused messaging (Delta Chat compatible)
   # ===========================================================================
   chatmail:
+    build:
+      context: ./chatmail
+      dockerfile: Dockerfile
     image: ghcr.io/shahram-tabasi/chatmail-relay:latest
     container_name: chatmail
     privileged: true
