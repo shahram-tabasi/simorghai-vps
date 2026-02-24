@@ -1,0 +1,491 @@
+# =============================================================================
+# Simorgh AI - Unified VPS Docker Compose
+# =============================================================================
+# Brings together all Simorgh services on a single VPS:
+#   - Landing site (simorgh-site)
+#   - Chatbot platform (simorgh-agent: backend, frontend, databases, microservices)
+#   - Chatmail relay (privacy-focused messaging)
+#   - Host nginx (TLS termination & routing)
+#
+# Usage:
+#   cp .env.example .env   # Configure environment variables
+#   docker compose up -d   # Start all services
+#
+# Architecture:
+#   Internet -> Host Nginx (443/80) -> Internal services
+#     /              -> Landing Site (port 3000)
+#     /chatbot/*     -> Chatbot Nginx (port 85) -> Frontend/Backend
+#     /api/*         -> Chatbot Nginx (port 85) -> Backend API
+#     :25,:465,:587  -> Chatmail Relay (SMTP)
+#     :993,:143      -> Chatmail Relay (IMAP)
+# =============================================================================
+
+services:
+  # ===========================================================================
+  # HOST NGINX - TLS Termination & Top-Level Routing
+  # ===========================================================================
+  nginx-proxy:
+    image: nginx:alpine
+    container_name: nginx-proxy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./ssl:/etc/ssl/private:ro
+      - nginx_proxy_logs:/var/log/nginx
+    networks:
+      - frontend_net
+      - chatbot_net
+    depends_on:
+      landing-site:
+        condition: service_healthy
+      chatbot-nginx:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ===========================================================================
+  # LANDING SITE - Simorgh AI Marketing Website
+  # ===========================================================================
+  landing-site:
+    build:
+      context: ${SIMORGH_SITE_PATH:-../simorgh-site}
+      dockerfile: Dockerfile
+    image: simorgh-landing:latest
+    container_name: landing-site
+    expose:
+      - "80"
+    networks:
+      - frontend_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ===========================================================================
+  # CHATBOT FRONTEND - React Vite Application
+  # ===========================================================================
+  chatbot-frontend:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-shahram-tabasi}/simorgh-frontend:${IMAGE_TAG:-latest}
+    container_name: chatbot-frontend
+    expose:
+      - "80"
+    networks:
+      - chatbot_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:80"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # ===========================================================================
+  # CHATBOT BACKEND - FastAPI Main Application
+  # ===========================================================================
+  chatbot-backend:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-shahram-tabasi}/simorgh-backend:${IMAGE_TAG:-latest}
+    container_name: chatbot-backend
+    environment:
+      - PYTHONUNBUFFERED=1
+      # HuggingFace Model Cache
+      - HF_HOME=/root/.cache/huggingface
+      - TRANSFORMERS_CACHE=/root/.cache/huggingface/hub
+      - SENTENCE_TRANSFORMERS_HOME=/root/.cache/torch/sentence_transformers
+      - HF_HUB_OFFLINE=0
+      # Redis
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_CHAT_DB=1
+      - REDIS_CACHE_DB=2
+      - REDIS_AGENT_DB=5
+      # Qdrant
+      - QDRANT_URL=http://qdrant:6333
+      # PostgreSQL Auth
+      - POSTGRES_AUTH_HOST=postgres-auth
+      - POSTGRES_AUTH_PORT=5432
+      - POSTGRES_AUTH_DATABASE=${POSTGRES_AUTH_DATABASE:-simorgh_auth}
+      - POSTGRES_AUTH_USER=${POSTGRES_AUTH_USER:-simorgh}
+      - POSTGRES_AUTH_PASSWORD=${POSTGRES_AUTH_PASSWORD:-simorgh_secure_2024}
+      # JWT
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-change-me-in-production}
+      # LLM Configuration
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o}
+      - LOCAL_LLM_URL=${LOCAL_LLM_URL:-}
+      - DEFAULT_LLM_MODE=${DEFAULT_LLM_MODE:-online}
+      # Document Processor
+      - DOC_PROCESSOR_URL=http://doc-processor:8000
+      # Google OAuth 2.0
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-}
+      # Email Service (SMTP)
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER:-smtp}
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_USE_TLS=${SMTP_USE_TLS:-true}
+      - FROM_EMAIL=${FROM_EMAIL:-noreply@simorgh.ai}
+      - FROM_NAME=${FROM_NAME:-Simorgh AI}
+      - AUTO_VERIFY_EMAIL=${AUTO_VERIFY_EMAIL:-false}
+      # Frontend URL
+      - FRONTEND_URL=${FRONTEND_URL:-https://${DOMAIN:-localhost}/chatbot}
+      # Cookie & Security
+      - SECURE_COOKIES=${SECURE_COOKIES:-true}
+      - COOKIE_DOMAIN=${COOKIE_DOMAIN:-}
+      # Admin
+      - ADMIN_SETUP_SECRET=${ADMIN_SETUP_SECRET:-}
+      # Crypto Payments
+      - NOWPAYMENTS_API_KEY=${NOWPAYMENTS_API_KEY:-}
+      - NOWPAYMENTS_IPN_SECRET=${NOWPAYMENTS_IPN_SECRET:-}
+      - NOWPAYMENTS_SANDBOX=${NOWPAYMENTS_SANDBOX:-false}
+      # Shell Service (optional - external or disabled on VPS)
+      - SHELL_SERVICE_URL=${SHELL_SERVICE_URL:-}
+      - SHELL_SERVICE_TOKEN=${SHELL_SERVICE_TOKEN:-}
+      - SHELL_SERVICE_TIMEOUT=60
+      # Agent Microservice URLs (REST)
+      - SEARCH_SERVICE_URL=http://search-service:8020
+      - TPMS_FETCHER_URL=http://tpms-fetcher:8021
+      - FILE_EXPORT_URL=http://file-export:8025
+      # Agent Microservice MCP URLs
+      - SEARCH_MCP_URL=http://search-service:8020/mcp
+      - TPMS_FETCHER_MCP_URL=http://tpms-fetcher:8021/mcp
+      - FILE_EXPORT_MCP_URL=http://file-export:8025/mcp
+    volumes:
+      - chatbot_uploads:/app/uploads
+      - chatbot_logs:/app/logs
+      - huggingface_cache:/root/.cache/huggingface
+      - sentence_transformers_cache:/root/.cache/torch/sentence_transformers
+    expose:
+      - "8890"
+    networks:
+      - chatbot_net
+    depends_on:
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      postgres-auth:
+        condition: service_healthy
+      doc-processor:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8890/health | grep -q 'healthy' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+  # ===========================================================================
+  # DOC-PROCESSOR - Document to Markdown Conversion
+  # ===========================================================================
+  doc-processor:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-shahram-tabasi}/simorgh-doc-processor:${IMAGE_TAG:-latest}
+    container_name: doc-processor
+    expose:
+      - "8000"
+    volumes:
+      - chatbot_uploads:/app/processed_docs
+      - doc_processor_temp:/app/temp
+    networks:
+      - chatbot_net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  # ===========================================================================
+  # TTS-SERVICE - Text-to-Speech (Edge-TTS, CPU)
+  # ===========================================================================
+  tts-service:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-shahram-tabasi}/simorgh-tts-service:${IMAGE_TAG:-latest}
+    container_name: tts-service
+    expose:
+      - "8002"
+    volumes:
+      - tts_cache:/app/cache
+    networks:
+      - chatbot_net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8002/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TTS_VOICE=${TTS_VOICE:-en-US-AriaNeural}
+      - TTS_LANGUAGE=${TTS_LANGUAGE:-en}
+      - TTS_MAX_CACHE_MB=${TTS_MAX_CACHE_MB:-500}
+
+  # ===========================================================================
+  # STT-SERVICE - Speech-to-Text (Faster-Whisper, CPU)
+  # ===========================================================================
+  stt-service:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-shahram-tabasi}/simorgh-stt-service:${IMAGE_TAG:-latest}
+    container_name: stt-service
+    expose:
+      - "8001"
+    volumes:
+      - stt_models:/app/models
+    networks:
+      - chatbot_net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8001/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+      - WHISPER_MODEL_SIZE=${WHISPER_MODEL_SIZE:-base}
+      - WHISPER_DEVICE=cpu
+      - WHISPER_COMPUTE_TYPE=int8
+
+  # ===========================================================================
+  # REDIS - Caching & Session Store
+  # ===========================================================================
+  redis:
+    image: redis:7.2-alpine
+    container_name: redis
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --save 60 1
+      --save 300 10
+    volumes:
+      - redis_data:/data
+    expose:
+      - "6379"
+    networks:
+      - chatbot_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ===========================================================================
+  # QDRANT - Vector Database
+  # ===========================================================================
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    expose:
+      - "6333"
+      - "6334"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    networks:
+      - chatbot_net
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    restart: unless-stopped
+
+  # ===========================================================================
+  # POSTGRES AUTH - Authentication Database
+  # ===========================================================================
+  postgres-auth:
+    image: postgres:16-alpine
+    container_name: postgres-auth
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_AUTH_USER:-simorgh}
+      - POSTGRES_PASSWORD=${POSTGRES_AUTH_PASSWORD:-simorgh_secure_2024}
+      - POSTGRES_DB=${POSTGRES_AUTH_DATABASE:-simorgh_auth}
+    volumes:
+      - postgres_auth_data:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    networks:
+      - chatbot_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_AUTH_USER:-simorgh} -d ${POSTGRES_AUTH_DATABASE:-simorgh_auth}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ===========================================================================
+  # CHATBOT NGINX - Internal reverse proxy for chatbot services
+  # ===========================================================================
+  chatbot-nginx:
+    image: nginx:alpine
+    container_name: chatbot-nginx
+    depends_on:
+      chatbot-backend:
+        condition: service_healthy
+      chatbot-frontend:
+        condition: service_started
+    ports:
+      - "85:80"
+    volumes:
+      - ./nginx/chatbot-nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/chatbot-locations.inc:/etc/nginx/includes/locations.inc:ro
+      - chatbot_nginx_cache:/data/nginx/cache
+      - chatbot_nginx_logs:/var/log/nginx
+    networks:
+      - chatbot_net
+    restart: unless-stopped
+
+  # ===========================================================================
+  # SEARCH-SERVICE - Web Search via DuckDuckGo
+  # ===========================================================================
+  search-service:
+    build:
+      context: ${SIMORGH_AGENT_PATH:-../simorgh-chatbot-ekc-deploy/simorgh-agent}/search-service
+    container_name: search-service
+    expose:
+      - "8020"
+    networks:
+      - chatbot_net
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MAX_RESULTS=${SEARCH_MAX_RESULTS:-10}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8020/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  # ===========================================================================
+  # TPMS-FETCHER - TPMS Project Data Fetcher
+  # ===========================================================================
+  tpms-fetcher:
+    build:
+      context: ${SIMORGH_AGENT_PATH:-../simorgh-chatbot-ekc-deploy/simorgh-agent}/tpms-fetcher-service
+    container_name: tpms-fetcher
+    expose:
+      - "8021"
+    networks:
+      - chatbot_net
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MYSQL_HOST=${MYSQL_HOST:-}
+      - MYSQL_PORT=${MYSQL_PORT:-3306}
+      - MYSQL_USER=${MYSQL_USER:-}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-TPMS}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8021/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  # ===========================================================================
+  # FILE-EXPORT - Excel/Word/PDF Export Generator
+  # ===========================================================================
+  file-export:
+    build:
+      context: ${SIMORGH_AGENT_PATH:-../simorgh-chatbot-ekc-deploy/simorgh-agent}/file-export-service
+    container_name: file-export
+    expose:
+      - "8025"
+    volumes:
+      - file_exports:/app/exports
+    networks:
+      - chatbot_net
+    environment:
+      - PYTHONUNBUFFERED=1
+      - EXPORT_DIR=/app/exports
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8025/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  # ===========================================================================
+  # CHATMAIL RELAY - Privacy-focused messaging
+  # ===========================================================================
+  chatmail:
+    build:
+      context: ${CHATMAIL_PATH:-../chatmail-relay-docker}
+      dockerfile: Dockerfile
+    image: chatmail-relay:latest
+    container_name: chatmail
+    privileged: true
+    restart: unless-stopped
+    ports:
+      - "25:25"
+      - "465:465"
+      - "587:587"
+      - "143:143"
+      - "993:993"
+      - "3478:3478"
+    volumes:
+      - chatmail_var:/var
+      - chatmail_home:/home
+      - chatmail_opt:/opt
+      - chatmail_etc:/etc
+      - chatmail_root:/root
+      - chatmail_usr:/usr
+    tmpfs:
+      - /run
+    networks:
+      - chatmail_net
+
+# =============================================================================
+# NETWORKS
+# =============================================================================
+networks:
+  frontend_net:
+    driver: bridge
+  chatbot_net:
+    driver: bridge
+  chatmail_net:
+    driver: bridge
+
+# =============================================================================
+# VOLUMES
+# =============================================================================
+volumes:
+  # Nginx
+  nginx_proxy_logs:
+  chatbot_nginx_cache:
+  chatbot_nginx_logs:
+  # Chatbot data
+  chatbot_uploads:
+  chatbot_logs:
+  redis_data:
+  qdrant_storage:
+  postgres_auth_data:
+  stt_models:
+  tts_cache:
+  huggingface_cache:
+  sentence_transformers_cache:
+  file_exports:
+  doc_processor_temp:
+  # Chatmail
+  chatmail_var:
+  chatmail_home:
+  chatmail_opt:
+  chatmail_etc:
+  chatmail_root:
+  chatmail_usr:
