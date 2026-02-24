@@ -1,136 +1,6 @@
 # simorghai-vps
 
-Unified Docker Compose deployment for the Simorgh AI platform on a single VPS.
-
-## What's Included
-
-| Service | Description | Port |
-|---|---|---|
-| **nginx-proxy** | TLS termination & top-level routing | 80, 443 |
-| **landing-site** | Simorgh AI marketing website (React/Vite) | internal |
-| **chatbot-frontend** | Chatbot React application | internal |
-| **chatbot-backend** | FastAPI backend (AI, auth, docs) | internal |
-| **chatbot-nginx** | Internal chatbot reverse proxy | 85 |
-| **doc-processor** | Document to Markdown converter | internal |
-| **tts-service** | Text-to-Speech (Edge-TTS) | internal |
-| **stt-service** | Speech-to-Text (Faster-Whisper) | internal |
-| **redis** | Cache & session store | internal |
-| **qdrant** | Vector database | internal |
-| **postgres-auth** | Auth database (PostgreSQL 16) | internal |
-| **search-service** | Web search (DuckDuckGo) | internal |
-| **tpms-fetcher** | TPMS project data | internal |
-| **file-export** | Excel/Word/PDF export | internal |
-| **chatmail** | Privacy-focused email relay | 25, 465, 587, 143, 993, 3478 |
-
-## Prerequisites
-
-- Docker Engine 24+ with Docker Compose v2
-- VPS with minimum 4GB RAM (8GB+ recommended)
-- A domain name with DNS configured
-- (Optional) SSL certificate files
-
-## Directory Structure
-
-Clone all repositories side by side:
-
-```
-/opt/simorgh/                         # or any base directory
-├── simorghai-vps/                    # This repo (docker-compose orchestrator)
-│   ├── docker-compose.yml
-│   ├── .env
-│   ├── nginx/
-│   │   ├── nginx.conf
-│   │   ├── conf.d/default.conf
-│   │   ├── chatbot-nginx.conf
-│   │   └── chatbot-locations.inc
-│   └── ssl/
-│       ├── fullchain.pem             # Your SSL cert
-│       └── privkey.pem               # Your SSL key
-├── simorgh-site/                     # Landing site source
-├── chatmail-relay-docker/            # Chatmail relay source
-└── simorgh-chatbot-ekc-deploy/       # Chatbot platform source
-```
-
-## Quick Start
-
-```bash
-# 1. Clone all repositories
-git clone https://github.com/shahram-tabasi/simorghai-vps.git
-git clone https://github.com/shahram-tabasi/simorgh-site.git
-git clone https://github.com/shahram-tabasi/chatmail-relay-docker.git
-git clone https://github.com/shahram-tabasi/simorgh-chatbot-ekc-deploy.git
-
-# 2. Configure environment
-cd simorghai-vps
-cp .env.example .env
-# Edit .env with your values (domain, API keys, passwords, etc.)
-
-# 3. (Optional) Add SSL certificates
-cp /path/to/fullchain.pem ssl/
-cp /path/to/privkey.pem ssl/
-# Then uncomment the HTTPS server block in nginx/conf.d/default.conf
-
-# 4. Start all services
-docker compose up -d
-
-# 5. Check status
-docker compose ps
-docker compose logs -f
-```
-
-## Chatmail Setup
-
-After the first start, initialize chatmail inside the container:
-
-```bash
-docker compose exec chatmail bash
-./scripts/cmdeploy init chat.yourdomain.com
-./scripts/cmdeploy run --ssh-host localhost
-./scripts/cmdeploy dns --ssh-host localhost
-```
-
-See the [chatmail-relay-docker README](https://github.com/shahram-tabasi/chatmail-relay-docker) for DNS record setup.
-
-## SSL Configuration
-
-To enable HTTPS:
-
-1. Place your certificate files in `ssl/`:
-   - `ssl/fullchain.pem` - Full certificate chain
-   - `ssl/privkey.pem` - Private key
-
-2. Edit `nginx/conf.d/default.conf`:
-   - Uncomment the HTTPS server block at the bottom
-   - In the HTTP server block, uncomment `return 301 https://$host$request_uri;`
-   - Remove or comment out the HTTP location blocks
-
-3. Restart nginx: `docker compose restart nginx-proxy`
-
-## Useful Commands
-
-```bash
-# View logs for a specific service
-docker compose logs -f chatbot-backend
-
-# Restart a single service
-docker compose restart chatbot-backend
-
-# Rebuild and restart landing site after code changes
-docker compose up -d --build landing-site
-
-# Scale down chatmail if not needed
-docker compose stop chatmail
-
-# Full restart
-docker compose down && docker compose up -d
-
-# Check disk usage of volumes
-docker system df -v
-```
-
-## Environment Variables
-
-See `.env.example` for all available configuration options.
+Self-contained Docker Compose deployment for the Simorgh AI landing platform on a VPS.
 
 ## Architecture
 
@@ -138,22 +8,113 @@ See `.env.example` for all available configuration options.
 Internet
     │
     ▼
-┌─────────────────────────────────────────────────┐
-│  nginx-proxy (80/443)                           │
-│  TLS termination & routing                      │
-├─────────────────────────────────────────────────┤
-│  /           → landing-site                     │
-│  /chatbot/*  → chatbot-nginx → frontend         │
-│  /api/*      → chatbot-nginx → backend          │
-│  /api/stt/*  → chatbot-nginx → stt-service      │
-│  /api/tts/*  → chatbot-nginx → tts-service      │
-└─────────────────────────────────────────────────┘
-    │
-    ▼
-┌──────────────┐  ┌──────────┐  ┌──────────────┐
-│ Redis        │  │ Qdrant   │  │ PostgreSQL   │
-│ (cache/sess) │  │ (vectors)│  │ (auth)       │
-└──────────────┘  └──────────┘  └──────────────┘
+┌─────────────────────────────────────────────────────────┐
+│  nginx-proxy (80/443)                                   │
+│  TLS termination & routing                              │
+├─────────────────────────────────────────────────────────┤
+│  /               → Landing Site (React/Vite)            │
+│  /api/chat       → Chatbot API (Anthropic Claude)       │
+│  /downloads/*    → Delta Chat binaries (pre-downloaded) │
+│  /chatbot/*      → RP → simorghai.electrokavir.com      │
+│  /eplanix/*      → RP → simorghai.electrokavir.com      │
+│  /simorgh-draft/*→ RP → simorghai.electrokavir.com      │
+└─────────────────────────────────────────────────────────┘
 
 Chatmail Relay: ports 25, 465, 587, 143, 993, 3478
+```
+
+## Services
+
+| Service | Description | Port |
+|---|---|---|
+| **nginx-proxy** | TLS termination, reverse proxy to EKC products & local services | 80, 443 |
+| **landing-site** | Simorgh AI marketing website with product cards | internal |
+| **chatbot-api** | Anthropic Claude-powered product support chatbot | internal |
+| **chatmail** | Privacy-focused email relay (Delta Chat compatible) | 25, 465, 587, 143, 993, 3478 |
+
+## Features
+
+- **Product Cards**: 3 products (Simorgh AI, EPLANIX Design Suite, EPLANIX) — "Launch App" buttons reverse-proxy to `simorghai.electrokavir.com`
+- **AI Chat Widget**: Floating chatbot powered by Anthropic Claude API with full product knowledge
+- **Bilingual**: English/Persian (Farsi) with RTL support
+- **Delta Chat**: Pre-downloaded from GitHub (VPS has no free internet) via weekly CI workflow
+- **Chatmail Relay**: Privacy-focused messaging service
+
+## Quick Start
+
+```bash
+# 1. Clone
+git clone https://github.com/shahram-tabasi/simorghai-vps.git
+cd simorghai-vps
+
+# 2. Configure
+cp .env.example .env
+# Edit .env — at minimum set ANTHROPIC_API_KEY
+
+# 3. (Optional) Place Delta Chat binaries
+mkdir -p delta-chat
+# Place deltachat-android.apk and deltachat-desktop.AppImage in delta-chat/
+
+# 4. Start
+docker compose up -d
+
+# 5. Verify
+docker compose ps
+curl http://localhost/health
+```
+
+## Delta Chat Downloads
+
+The VPS has no free internet, so Delta Chat binaries are pre-downloaded.
+
+**Option A: GitHub Actions (automatic)**
+The `download-deltachat.yml` workflow runs weekly and publishes binaries as GitHub Release assets. Download and place in `delta-chat/`.
+
+**Option B: Manual**
+```bash
+# On a machine with internet:
+wget -O delta-chat/deltachat-android.apk "https://download.delta.chat/android/deltachat-android-latest.apk"
+wget -O delta-chat/deltachat-desktop.AppImage "https://download.delta.chat/desktop/deltachat-desktop-latest.AppImage"
+```
+
+## Chatmail Setup
+
+After the first start:
+```bash
+docker compose exec chatmail bash
+./scripts/cmdeploy init chat.yourdomain.com
+./scripts/cmdeploy run --ssh-host localhost
+./scripts/cmdeploy dns --ssh-host localhost
+```
+
+## SSL
+
+1. Place certs in `ssl/fullchain.pem` and `ssl/privkey.pem`
+2. Uncomment the HTTPS server block in `nginx/conf.d/default.conf`
+3. `docker compose restart nginx-proxy`
+
+## Directory Structure
+
+```
+simorghai-vps/
+├── docker-compose.yml
+├── .env.example
+├── landing-site/               # React/Vite landing page
+│   ├── Dockerfile
+│   ├── src/components/
+│   │   ├── FeaturesSection.tsx    # Product cards → EKC reverse proxy
+│   │   ├── ChatWidget.tsx         # Anthropic-powered AI chat
+│   │   ├── ChatMailSection.tsx    # Delta Chat download buttons
+│   │   └── ...
+│   └── public/
+├── chatbot-api/                # Anthropic Claude proxy
+│   ├── Dockerfile
+│   └── server.js
+├── chatmail/                   # Chatmail relay
+│   └── Dockerfile
+├── nginx/conf.d/default.conf   # Routing + reverse proxy
+├── delta-chat/                 # Pre-downloaded binaries
+├── ssl/                        # Certificates (not committed)
+└── .github/workflows/
+    └── download-deltachat.yml
 ```
