@@ -1,0 +1,29 @@
+# Environment (secrets)
+.env
+
+# SSL certificates
+ssl/*.pem
+ssl/*.key
+ssl/*.crt
+
+# Delta Chat binaries (downloaded via CI)
+delta-chat/*.apk
+delta-chat/*.AppImage
+delta-chat/*.exe
+
+# Node
+node_modules/
+
+# Build output
+landing-site/dist/
+
+# Docker volumes
+data/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db

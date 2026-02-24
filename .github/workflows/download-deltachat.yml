@@ -1,0 +1,65 @@
+name: Download Delta Chat Binaries
+
+# Runs weekly + manual trigger to keep binaries up to date
+on:
+  schedule:
+    - cron: '0 3 * * 1' # Every Monday at 03:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Delta Chat Android APK
+        run: |
+          # Get latest release info from Delta Chat
+          RELEASE_INFO=$(curl -s https://api.github.com/repos/deltachat/deltachat-android/releases/latest)
+          APK_URL=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name | endswith(".apk")) | .browser_download_url' | head -1)
+          VERSION=$(echo "$RELEASE_INFO" | jq -r '.tag_name')
+
+          if [ -z "$APK_URL" ] || [ "$APK_URL" = "null" ]; then
+            echo "Could not find APK download URL"
+            exit 1
+          fi
+
+          echo "Downloading Delta Chat Android $VERSION from $APK_URL"
+          curl -L -o deltachat-android.apk "$APK_URL"
+          echo "ANDROID_VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Download Delta Chat Desktop AppImage
+        run: |
+          RELEASE_INFO=$(curl -s https://api.github.com/repos/deltachat/deltachat-desktop/releases/latest)
+          APPIMAGE_URL=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name | endswith(".AppImage")) | .browser_download_url' | head -1)
+          VERSION=$(echo "$RELEASE_INFO" | jq -r '.tag_name')
+
+          if [ -z "$APPIMAGE_URL" ] || [ "$APPIMAGE_URL" = "null" ]; then
+            echo "Could not find AppImage download URL"
+            exit 1
+          fi
+
+          echo "Downloading Delta Chat Desktop $VERSION from $APPIMAGE_URL"
+          curl -L -o deltachat-desktop.AppImage "$APPIMAGE_URL"
+          echo "DESKTOP_VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: deltachat-latest
+          name: "Delta Chat Binaries (Android: ${{ env.ANDROID_VERSION }}, Desktop: ${{ env.DESKTOP_VERSION }})"
+          body: |
+            Pre-downloaded Delta Chat binaries for offline VPS deployment.
+
+            - Android APK: ${{ env.ANDROID_VERSION }}
+            - Desktop AppImage: ${{ env.DESKTOP_VERSION }}
+
+            These files are served by the simorghai-vps landing page for users
+            whose VPS does not have free internet access to download from delta.chat.
+          files: |
+            deltachat-android.apk
+            deltachat-desktop.AppImage
+          make_latest: true

@@ -1,0 +1,140 @@
+# =============================================================================
+# Simorgh AI VPS - Docker Compose
+# =============================================================================
+# Services:
+#   - nginx-proxy:   TLS termination, reverse proxy to EKC products & landing
+#   - landing-site:  React/Vite marketing website
+#   - chatbot-api:   Anthropic-powered product assistant
+#   - chatmail:      Privacy-focused email relay (Delta Chat)
+#
+# Usage:
+#   cp .env.example .env && docker compose up -d
+# =============================================================================
+
+services:
+  # ===========================================================================
+  # NGINX PROXY - Main entry point, TLS termination & reverse proxy
+  # ===========================================================================
+  nginx-proxy:
+    image: nginx:alpine
+    container_name: nginx-proxy
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./ssl:/etc/ssl/private:ro
+      - ./delta-chat:/usr/share/nginx/downloads:ro
+      - nginx_logs:/var/log/nginx
+    networks:
+      - frontend_net
+    depends_on:
+      landing-site:
+        condition: service_healthy
+      chatbot-api:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ===========================================================================
+  # LANDING SITE - Simorgh AI marketing website (React/Vite)
+  # ===========================================================================
+  landing-site:
+    build:
+      context: ./landing-site
+      dockerfile: Dockerfile
+    image: simorgh-landing:latest
+    container_name: landing-site
+    expose:
+      - "80"
+    networks:
+      - frontend_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ===========================================================================
+  # CHATBOT API - Anthropic Claude proxy with product context
+  # ===========================================================================
+  chatbot-api:
+    build:
+      context: ./chatbot-api
+      dockerfile: Dockerfile
+    image: simorgh-chatbot-api:latest
+    container_name: chatbot-api
+    expose:
+      - "3001"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-4-20250514}
+      - PORT=3001
+    networks:
+      - frontend_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3001/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ===========================================================================
+  # CHATMAIL RELAY - Privacy-focused messaging (Delta Chat compatible)
+  # ===========================================================================
+  chatmail:
+    build:
+      context: ./chatmail
+      dockerfile: Dockerfile
+    image: chatmail-relay:latest
+    container_name: chatmail
+    privileged: true
+    restart: unless-stopped
+    ports:
+      - "25:25"
+      - "465:465"
+      - "587:587"
+      - "143:143"
+      - "993:993"
+      - "3478:3478"
+    volumes:
+      - chatmail_var:/var
+      - chatmail_home:/home
+      - chatmail_opt:/opt
+      - chatmail_etc:/etc
+      - chatmail_root:/root
+      - chatmail_usr:/usr
+    tmpfs:
+      - /run
+    networks:
+      - chatmail_net
+
+# =============================================================================
+# NETWORKS
+# =============================================================================
+networks:
+  frontend_net:
+    driver: bridge
+  chatmail_net:
+    driver: bridge
+
+# =============================================================================
+# VOLUMES
+# =============================================================================
+volumes:
+  nginx_logs:
+  chatmail_var:
+  chatmail_home:
+  chatmail_opt:
+  chatmail_etc:
+  chatmail_root:
+  chatmail_usr:
