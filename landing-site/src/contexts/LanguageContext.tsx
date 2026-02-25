@@ -73,7 +73,8 @@ const translations: Record<string, Record<Language, string>> = {
   'chatmail.desc': { en: 'Connect with us via Delta Chat — a privacy-focused messenger', fa: 'از طریق دلتا چت با ما در ارتباط باشید — پیام‌رسان مبتنی بر حریم خصوصی' },
   'chatmail.download': { en: 'Download Delta Chat', fa: 'دانلود دلتا چت' },
   'chatmail.android': { en: 'Android APK', fa: 'نسخه اندروید' },
-  'chatmail.desktop': { en: 'Desktop', fa: 'نسخه دسکتاپ' },
+  'chatmail.windows': { en: 'Windows', fa: 'نسخه ویندوز' },
+  'chatmail.linux': { en: 'Linux', fa: 'نسخه لینوکس' },
 
   'footer.desc': { en: 'Pioneering the next generation of artificial intelligence with ethical, scalable, and powerful solutions for the modern enterprise.', fa: 'پیشگامی در نسل بعدی هوش مصنوعی با راه‌حل‌های اخلاقی، مقیاس‌پذیر و قدرتمند برای سازمان‌های مدرن.' },
   'footer.platform': { en: 'Platform', fa: 'پلتفرم' },
