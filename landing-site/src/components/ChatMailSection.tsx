@@ -1,5 +1,5 @@
 import React from 'react';
-import { MessageCircle, Download, Smartphone, Monitor } from 'lucide-react';
+import { MessageCircle, Download, Smartphone, Monitor, Laptop } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 
 export function ChatMailSection() {
@@ -29,7 +29,7 @@ export function ChatMailSection() {
 
         <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-3xl p-8 md:p-12
                         hover:border-green-500/30 transition-all duration-500">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Android APK - downloaded from our GitHub releases */}
             <a href="/downloads/deltachat-android.apk"
               className="group flex items-center gap-4 p-6 rounded-2xl bg-gradient-to-r from-green-600/10 to-cyan-600/10
@@ -45,7 +45,22 @@ export function ChatMailSection() {
               <Download className="w-5 h-5 text-green-400 group-hover:translate-y-1 transition-transform" />
             </a>
 
-            {/* Desktop - downloaded from our GitHub releases */}
+            {/* Windows - downloaded from our GitHub releases */}
+            <a href="/downloads/deltachat-desktop.exe"
+              className="group flex items-center gap-4 p-6 rounded-2xl bg-gradient-to-r from-blue-600/10 to-indigo-600/10
+                         border border-white/10 hover:border-blue-500/30 hover:shadow-xl hover:shadow-blue-500/10
+                         hover:translate-y-[-2px] transition-all duration-300">
+              <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/30 group-hover:scale-110 transition-transform">
+                <Laptop className="w-8 h-8 text-blue-400" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-white mb-1">{t('chatmail.windows')}</h3>
+                <p className="text-sm text-slate-400">Delta Chat Windows</p>
+              </div>
+              <Download className="w-5 h-5 text-blue-400 group-hover:translate-y-1 transition-transform" />
+            </a>
+
+            {/* Linux Desktop - downloaded from our GitHub releases */}
             <a href="/downloads/deltachat-desktop.AppImage"
               className="group flex items-center gap-4 p-6 rounded-2xl bg-gradient-to-r from-cyan-600/10 to-blue-600/10
                          border border-white/10 hover:border-cyan-500/30 hover:shadow-xl hover:shadow-cyan-500/10
@@ -54,8 +69,8 @@ export function ChatMailSection() {
                 <Monitor className="w-8 h-8 text-cyan-400" />
               </div>
               <div className="flex-1">
-                <h3 className="text-lg font-bold text-white mb-1">{t('chatmail.desktop')}</h3>
-                <p className="text-sm text-slate-400">Delta Chat Desktop</p>
+                <h3 className="text-lg font-bold text-white mb-1">{t('chatmail.linux')}</h3>
+                <p className="text-sm text-slate-400">Delta Chat Linux</p>
               </div>
               <Download className="w-5 h-5 text-cyan-400 group-hover:translate-y-1 transition-transform" />
             </a>

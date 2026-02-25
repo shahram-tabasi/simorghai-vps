@@ -46,6 +46,18 @@ jobs:
           curl -L -o deltachat-desktop.AppImage "$APPIMAGE_URL"
           echo "DESKTOP_VERSION=$VERSION" >> $GITHUB_ENV
 
+      - name: Download Delta Chat Windows Installer
+        run: |
+          RELEASE_INFO=$(curl -s https://api.github.com/repos/deltachat/deltachat-desktop/releases/latest)
+          EXE_URL=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name | endswith(".exe")) | .browser_download_url' | head -1)
+
+          if [ -z "$EXE_URL" ] || [ "$EXE_URL" = "null" ]; then
+            echo "WARNING: Could not find Windows .exe download URL, skipping"
+          else
+            echo "Downloading Delta Chat Windows installer from $EXE_URL"
+            curl -L -o deltachat-desktop.exe "$EXE_URL"
+          fi
+
       - name: Create or update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -62,4 +74,5 @@ jobs:
           files: |
             deltachat-android.apk
             deltachat-desktop.AppImage
+            deltachat-desktop.exe
           make_latest: true
