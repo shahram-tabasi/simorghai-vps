@@ -152,7 +152,7 @@ export function ArticlesSection() {
                 {/* Download buttons */}
                 <div className="flex flex-wrap gap-3 mt-auto">
                   <a
-                    href={`/articles/files/${article.files.en}`}
+                    href={`/articles/files/${encodeURI(article.files.en)}`}
                     download
                     className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl
                              bg-gradient-to-r from-cyan-500/20 to-cyan-600/20 border border-cyan-500/30
@@ -164,7 +164,7 @@ export function ArticlesSection() {
                     <span>PDF — {t('articles.downloadEn')}</span>
                   </a>
                   <a
-                    href={`/articles/files/${article.files.fa}`}
+                    href={`/articles/files/${encodeURI(article.files.fa)}`}
                     download
                     className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl
                              bg-gradient-to-r from-purple-500/20 to-purple-600/20 border border-purple-500/30
