@@ -32,7 +32,7 @@ export function Footer() {
             <ul className="space-y-4 text-gray-400">
               <li><a href="#about" className="hover:text-cyan-400 transition-colors">{t('nav.about')}</a></li>
               <li><a href="#" className="hover:text-cyan-400 transition-colors">{t('footer.careers')}</a></li>
-              <li><a href="#" className="hover:text-cyan-400 transition-colors">{t('footer.blog')}</a></li>
+              <li><a href="#articles" className="hover:text-cyan-400 transition-colors">{t('nav.articles')}</a></li>
               <li><a href="#contact" className="hover:text-cyan-400 transition-colors">{t('nav.contact')}</a></li>
             </ul>
           </div>

@@ -26,6 +26,7 @@ services:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
       - ./ssl:/etc/ssl/private:ro
       - ./delta-chat:/usr/share/nginx/downloads:ro
+      - /opt/simorgh-articles:/usr/share/nginx/articles:ro
       - nginx_logs:/var/log/nginx
     networks:
       - frontend_net
@@ -53,6 +54,8 @@ services:
     container_name: landing-site
     expose:
       - "80"
+    volumes:
+      - /opt/simorgh-articles:/usr/share/nginx/articles:ro
     networks:
       - frontend_net
     restart: unless-stopped
