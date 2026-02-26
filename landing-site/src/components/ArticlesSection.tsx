@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { FileText, Download, BookOpen, Globe, Tag } from 'lucide-react';
+import { FileText, Download, BookOpen, Tag } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 
 interface Article {
@@ -159,9 +159,9 @@ export function ArticlesSection() {
                              text-cyan-300 text-sm font-medium
                              hover:from-cyan-500/30 hover:to-cyan-600/30 hover:border-cyan-400/50
                              hover:text-white transition-all duration-300">
-                    <Globe className="w-4 h-4" />
+                    <FileText className="w-4 h-4" />
                     <Download className="w-3.5 h-3.5" />
-                    <span>{t('articles.downloadEn')}</span>
+                    <span>PDF — {t('articles.downloadEn')}</span>
                   </a>
                   <a
                     href={`/articles/files/${article.files.fa}`}
@@ -171,9 +171,9 @@ export function ArticlesSection() {
                              text-purple-300 text-sm font-medium
                              hover:from-purple-500/30 hover:to-purple-600/30 hover:border-purple-400/50
                              hover:text-white transition-all duration-300">
-                    <Globe className="w-4 h-4" />
+                    <FileText className="w-4 h-4" />
                     <Download className="w-3.5 h-3.5" />
-                    <span>{t('articles.downloadFa')}</span>
+                    <span>PDF — {t('articles.downloadFa')}</span>
                   </a>
                 </div>
               </div>
