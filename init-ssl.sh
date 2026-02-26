@@ -39,7 +39,9 @@ EMAIL=""
 case "${1:-}" in
     --cloudflare)
         MODE="cloudflare"
-        DOMAIN="${2:?Usage: ./init-ssl.sh --cloudflare <domain>}"
+        DOMAIN="${2:?Usage: ./init-ssl.sh --cloudflare <domain> [cert.pem] [key.pem]}"
+        CF_CERT_FILE="${3:-}"
+        CF_KEY_FILE="${4:-}"
         ;;
     --self-signed)
         MODE="self-signed"
@@ -47,9 +49,9 @@ case "${1:-}" in
         ;;
     --help|-h)
         echo "Usage:"
-        echo "  ./init-ssl.sh <domain> <email>       # Let's Encrypt (needs direct access)"
-        echo "  ./init-ssl.sh --cloudflare <domain>   # Cloudflare Origin Certificate"
-        echo "  ./init-ssl.sh --self-signed <domain>  # Self-signed (dev/testing)"
+        echo "  ./init-ssl.sh <domain> <email>                     # Let's Encrypt"
+        echo "  ./init-ssl.sh --cloudflare <domain> cert.pem key.pem  # Cloudflare Origin Cert"
+        echo "  ./init-ssl.sh --self-signed <domain>               # Self-signed (dev/testing)"
         exit 0
         ;;
     *)
@@ -137,7 +139,7 @@ if detect_cloudflare; then
         warn "because Cloudflare intercepts the challenge request."
         echo ""
         echo "  Recommended: Use Cloudflare Origin Certificate instead:"
-        echo "    ./init-ssl.sh --cloudflare ${DOMAIN}"
+        echo "    ./init-ssl.sh --cloudflare ${DOMAIN} cert.pem key.pem"
         echo ""
         echo "  Or in Cloudflare dashboard, set SSL mode to 'Full' and use self-signed:"
         echo "    ./init-ssl.sh --self-signed ${DOMAIN}"
@@ -171,29 +173,47 @@ case "${MODE}" in
     # -------------------------------------------------------------------
     cloudflare)
         echo "Setting up Cloudflare Origin Certificate."
-        echo ""
-        echo "To generate a Cloudflare Origin Certificate:"
-        echo "  1. Go to Cloudflare Dashboard -> SSL/TLS -> Origin Server"
-        echo "  2. Click 'Create Certificate'"
-        echo "  3. Select the domain: ${DOMAIN}"
-        echo "  4. Copy the certificate PEM and private key"
-        echo ""
 
-        # Create cert in the volume via certbot container
+        # Create cert directory in the volume
         docker compose run --rm --entrypoint "" certbot sh -c "
             mkdir -p ${CERT_DIR}
         "
 
-        # Read cert from user
-        CERT_FILE=$(mktemp)
-        KEY_FILE=$(mktemp)
-        trap 'rm -f "${CERT_FILE}" "${KEY_FILE}"' EXIT
+        if [ -n "${CF_CERT_FILE}" ] && [ -n "${CF_KEY_FILE}" ]; then
+            # File-based input (recommended)
+            if [ ! -f "${CF_CERT_FILE}" ]; then
+                error "Certificate file not found: ${CF_CERT_FILE}"
+                exit 1
+            fi
+            if [ ! -f "${CF_KEY_FILE}" ]; then
+                error "Key file not found: ${CF_KEY_FILE}"
+                exit 1
+            fi
+            CERT_FILE="${CF_CERT_FILE}"
+            KEY_FILE="${CF_KEY_FILE}"
+        else
+            # Interactive paste mode (fallback)
+            echo ""
+            echo "To generate a Cloudflare Origin Certificate:"
+            echo "  1. Go to Cloudflare Dashboard -> SSL/TLS -> Origin Server"
+            echo "  2. Click 'Create Certificate'"
+            echo "  3. Select the domain: ${DOMAIN}"
+            echo "  4. Save the certificate and key to files, then run:"
+            echo "     ./init-ssl.sh --cloudflare ${DOMAIN} cert.pem key.pem"
+            echo ""
+            echo "  Or paste them interactively below."
+            echo ""
 
-        echo "Paste the Origin Certificate PEM (then press Ctrl+D on a new line):"
-        cat > "${CERT_FILE}"
-        echo ""
-        echo "Paste the Private Key PEM (then press Ctrl+D on a new line):"
-        cat > "${KEY_FILE}"
+            CERT_FILE=$(mktemp)
+            KEY_FILE=$(mktemp)
+            trap 'rm -f "${CERT_FILE}" "${KEY_FILE}"' EXIT
+
+            echo "Paste the Origin Certificate PEM (then press Ctrl+D on a new line):"
+            cat > "${CERT_FILE}"
+            echo ""
+            echo "Paste the Private Key PEM (then press Ctrl+D on a new line):"
+            cat > "${KEY_FILE}"
+        fi
 
         # Validate the cert looks right
         if ! grep -q "BEGIN CERTIFICATE" "${CERT_FILE}"; then
