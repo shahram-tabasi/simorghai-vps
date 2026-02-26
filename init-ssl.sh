@@ -2,55 +2,123 @@
 # =============================================================================
 # init-ssl.sh - First-time SSL certificate setup for Simorgh AI VPS
 # =============================================================================
-# Usage:  ./init-ssl.sh yourdomain.com your@email.com
+# Usage:
+#   ./init-ssl.sh <domain> <email>                  # Let's Encrypt via certbot
+#   ./init-ssl.sh --cloudflare <domain>              # Cloudflare Origin Cert
+#   ./init-ssl.sh --self-signed <domain>             # Self-signed (dev/testing)
 #
 # This script:
-#   1. Pre-flight checks (DNS, port 80, Let's Encrypt connectivity)
-#   2. Creates a temporary self-signed cert so nginx can start on port 443
-#   3. Starts nginx-proxy (needed for ACME HTTP challenge on port 80)
-#   4. Requests a real Let's Encrypt certificate via certbot
-#   5. Reloads nginx with the real certificate
+#   1. Pre-flight checks (DNS, connectivity)
+#   2. Creates SSL certificate (Let's Encrypt, Cloudflare, or self-signed)
+#   3. Starts/reloads nginx with the certificate
 #
-# After this, the certbot container handles automatic renewal.
+# After this, the certbot container handles automatic renewal (LE mode only).
 # =============================================================================
 
 set -euo pipefail
-
-DOMAIN="${1:?Usage: ./init-ssl.sh <domain> <email>}"
-EMAIL="${2:?Usage: ./init-ssl.sh <domain> <email>}"
 
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 info()  { echo -e "${GREEN}[+]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[!]${NC} $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*"; }
+step()  { echo -e "\n${CYAN}$*${NC}"; }
 
-echo "=== Simorgh AI - SSL Setup for ${DOMAIN} ==="
+# ---------------------------------------------------------------------------
+# Parse arguments
+# ---------------------------------------------------------------------------
+MODE="letsencrypt"
+DOMAIN=""
+EMAIL=""
 
-# ---- Step 1: Pre-flight checks ----
-echo ""
-echo "[1/5] Running pre-flight checks..."
+case "${1:-}" in
+    --cloudflare)
+        MODE="cloudflare"
+        DOMAIN="${2:?Usage: ./init-ssl.sh --cloudflare <domain>}"
+        ;;
+    --self-signed)
+        MODE="self-signed"
+        DOMAIN="${2:?Usage: ./init-ssl.sh --self-signed <domain>}"
+        ;;
+    --help|-h)
+        echo "Usage:"
+        echo "  ./init-ssl.sh <domain> <email>       # Let's Encrypt (needs direct access)"
+        echo "  ./init-ssl.sh --cloudflare <domain>   # Cloudflare Origin Certificate"
+        echo "  ./init-ssl.sh --self-signed <domain>  # Self-signed (dev/testing)"
+        exit 0
+        ;;
+    *)
+        DOMAIN="${1:?Usage: ./init-ssl.sh <domain> <email>}"
+        EMAIL="${2:?Usage: ./init-ssl.sh <domain> <email>}"
+        ;;
+esac
 
-# Check DNS resolution
+CERT_DIR="/etc/letsencrypt/live/${DOMAIN}"
+
+echo "=== Simorgh AI - SSL Setup for ${DOMAIN} (mode: ${MODE}) ==="
+
+# ---------------------------------------------------------------------------
+# Pre-flight: Detect if Cloudflare is in front
+# ---------------------------------------------------------------------------
+detect_cloudflare() {
+    info "Checking if Cloudflare is in front of ${DOMAIN}..."
+
+    # Check if resolved IPs belong to Cloudflare ranges
+    local resolved_ip
+    resolved_ip=$(dig +short "${DOMAIN}" 2>/dev/null | head -1)
+    if [ -z "${resolved_ip}" ]; then
+        resolved_ip=$(getent hosts "${DOMAIN}" 2>/dev/null | awk '{print $1}' | head -1)
+    fi
+
+    if [ -z "${resolved_ip}" ]; then
+        warn "Could not resolve ${DOMAIN}"
+        return 1
+    fi
+
+    # Check common Cloudflare IP ranges
+    local cf_detected=false
+    if echo "${resolved_ip}" | grep -qE '^(104\.(1[6-9]|2[0-7])\.|172\.(6[4-9]|7[0-1])\.|103\.2[12]\.|141\.101\.|108\.162\.|190\.93\.|188\.114\.|197\.234\.|198\.41\.|162\.158\.|131\.0\.7)'; then
+        cf_detected=true
+    fi
+
+    # Also check HTTP headers
+    local cf_header
+    cf_header=$(curl -sI --connect-timeout 10 "http://${DOMAIN}" 2>/dev/null | grep -i "cf-ray:" || true)
+    if [ -n "${cf_header}" ]; then
+        cf_detected=true
+    fi
+
+    if [ "${cf_detected}" = true ]; then
+        info "Cloudflare detected! Your domain is proxied through Cloudflare."
+        return 0
+    fi
+    return 1
+}
+
+# ---------------------------------------------------------------------------
+# Step 1: Pre-flight checks
+# ---------------------------------------------------------------------------
+step "[1/4] Running pre-flight checks..."
+
+# Check DNS
 info "Checking DNS resolution for ${DOMAIN}..."
 RESOLVED_IP=$(dig +short "${DOMAIN}" 2>/dev/null | tail -1)
 if [ -z "${RESOLVED_IP}" ]; then
-    # dig might not be available, try getent
     RESOLVED_IP=$(getent hosts "${DOMAIN}" 2>/dev/null | awk '{print $1}' | head -1)
 fi
 
 if [ -z "${RESOLVED_IP}" ]; then
     error "DNS resolution failed for ${DOMAIN}"
     echo "  Make sure your domain's A record points to this server's IP."
-    echo "  You can check with: dig ${DOMAIN} or nslookup ${DOMAIN}"
     exit 1
 fi
 
-# Try to detect our public IP
+# Detect public IP
 SERVER_IP=$(curl -s --connect-timeout 10 ifconfig.me 2>/dev/null \
     || curl -s --connect-timeout 10 icanhazip.com 2>/dev/null \
     || curl -s --connect-timeout 10 api.ipify.org 2>/dev/null \
@@ -59,121 +127,231 @@ SERVER_IP=$(curl -s --connect-timeout 10 ifconfig.me 2>/dev/null \
 info "Domain ${DOMAIN} resolves to: ${RESOLVED_IP}"
 info "This server's public IP: ${SERVER_IP}"
 
-if [ "${SERVER_IP}" != "unknown" ] && [ "${RESOLVED_IP}" != "${SERVER_IP}" ]; then
-    warn "DNS mismatch! ${DOMAIN} points to ${RESOLVED_IP} but this server is ${SERVER_IP}"
-    warn "Let's Encrypt HTTP challenge will fail if the domain doesn't point here."
-    echo ""
-    read -r -p "Continue anyway? (y/N): " CONTINUE
-    if [ "${CONTINUE}" != "y" ] && [ "${CONTINUE}" != "Y" ]; then
-        echo "Aborted."
-        exit 1
+# Cloudflare detection
+IS_CLOUDFLARE=false
+if detect_cloudflare; then
+    IS_CLOUDFLARE=true
+    if [ "${MODE}" = "letsencrypt" ]; then
+        echo ""
+        warn "Cloudflare is proxying your domain. Let's Encrypt HTTP challenge will likely FAIL"
+        warn "because Cloudflare intercepts the challenge request."
+        echo ""
+        echo "  Recommended: Use Cloudflare Origin Certificate instead:"
+        echo "    ./init-ssl.sh --cloudflare ${DOMAIN}"
+        echo ""
+        echo "  Or in Cloudflare dashboard, set SSL mode to 'Full' and use self-signed:"
+        echo "    ./init-ssl.sh --self-signed ${DOMAIN}"
+        echo ""
+        read -r -p "Try Let's Encrypt anyway? (y/N): " CONTINUE
+        if [ "${CONTINUE}" != "y" ] && [ "${CONTINUE}" != "Y" ]; then
+            echo "Aborted. Re-run with --cloudflare or --self-signed."
+            exit 1
+        fi
+    fi
+elif [ "${MODE}" = "letsencrypt" ]; then
+    # IP mismatch check (only matters for non-Cloudflare Let's Encrypt)
+    if [ "${SERVER_IP}" != "unknown" ] && [ "${RESOLVED_IP}" != "${SERVER_IP}" ]; then
+        warn "DNS mismatch! ${DOMAIN} -> ${RESOLVED_IP}, but this server is ${SERVER_IP}"
+        warn "Let's Encrypt HTTP challenge will fail if the domain doesn't point here."
+        echo ""
+        read -r -p "Continue anyway? (y/N): " CONTINUE
+        if [ "${CONTINUE}" != "y" ] && [ "${CONTINUE}" != "Y" ]; then
+            echo "Aborted."
+            exit 1
+        fi
     fi
 fi
 
-# Check Let's Encrypt connectivity
-info "Checking connectivity to Let's Encrypt..."
-if curl -s --connect-timeout 15 --max-time 20 -o /dev/null -w "%{http_code}" https://acme-v02.api.letsencrypt.org/directory 2>/dev/null | grep -q "200"; then
-    info "Let's Encrypt ACME server is reachable."
-else
-    error "Cannot reach Let's Encrypt ACME server (https://acme-v02.api.letsencrypt.org)."
-    echo ""
-    echo "  This is a common issue on Iranian VPS servers due to network restrictions."
-    echo "  Possible solutions:"
-    echo "    1. Use a DNS challenge instead of HTTP challenge (requires DNS API access)"
-    echo "    2. Obtain the certificate on another machine and copy it to this server"
-    echo "    3. Use a reverse proxy/CDN (like Cloudflare) that provides its own SSL"
-    echo "    4. Check if your VPS provider offers a proxy/tunnel for outbound HTTPS"
-    echo ""
-    read -r -p "Try anyway? (y/N): " CONTINUE
-    if [ "${CONTINUE}" != "y" ] && [ "${CONTINUE}" != "Y" ]; then
-        echo "Aborted."
-        exit 1
-    fi
-fi
+# ---------------------------------------------------------------------------
+# Step 2: Create certificate
+# ---------------------------------------------------------------------------
+step "[2/4] Setting up SSL certificate..."
 
-# ---- Step 2: Create temp self-signed cert so nginx can start ----
-echo ""
-echo "[2/5] Creating temporary self-signed certificate..."
+case "${MODE}" in
+    # -------------------------------------------------------------------
+    cloudflare)
+        echo "Setting up Cloudflare Origin Certificate."
+        echo ""
+        echo "To generate a Cloudflare Origin Certificate:"
+        echo "  1. Go to Cloudflare Dashboard -> SSL/TLS -> Origin Server"
+        echo "  2. Click 'Create Certificate'"
+        echo "  3. Select the domain: ${DOMAIN}"
+        echo "  4. Copy the certificate PEM and private key"
+        echo ""
 
-docker compose up -d --no-deps --quiet-pull nginx-proxy 2>/dev/null || true
-docker compose down nginx-proxy 2>/dev/null || true
+        # Create cert in the volume via certbot container
+        docker compose run --rm --entrypoint "" certbot sh -c "
+            mkdir -p ${CERT_DIR}
+        "
 
-docker compose run --rm --entrypoint "" certbot sh -c "
-  mkdir -p /etc/letsencrypt/live/${DOMAIN}
-  if [ ! -f /etc/letsencrypt/live/${DOMAIN}/fullchain.pem ]; then
-    openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
-      -keyout /etc/letsencrypt/live/${DOMAIN}/privkey.pem \
-      -out /etc/letsencrypt/live/${DOMAIN}/fullchain.pem \
-      -subj '/CN=${DOMAIN}'
-    echo 'Temporary self-signed cert created.'
-  else
-    echo 'Certificate already exists, skipping self-signed generation.'
-  fi
-"
+        # Read cert from user
+        CERT_FILE=$(mktemp)
+        KEY_FILE=$(mktemp)
+        trap 'rm -f "${CERT_FILE}" "${KEY_FILE}"' EXIT
 
-# ---- Step 3: Start nginx (it can now load the temp cert) ----
-echo ""
-echo "[3/5] Starting nginx-proxy..."
+        echo "Paste the Origin Certificate PEM (then press Ctrl+D on a new line):"
+        cat > "${CERT_FILE}"
+        echo ""
+        echo "Paste the Private Key PEM (then press Ctrl+D on a new line):"
+        cat > "${KEY_FILE}"
+
+        # Validate the cert looks right
+        if ! grep -q "BEGIN CERTIFICATE" "${CERT_FILE}"; then
+            error "That doesn't look like a valid certificate PEM."
+            exit 1
+        fi
+        if ! grep -q "BEGIN.*PRIVATE KEY" "${KEY_FILE}"; then
+            error "That doesn't look like a valid private key PEM."
+            exit 1
+        fi
+
+        # Copy into the volume via certbot container
+        docker compose run --rm --entrypoint "" \
+            -v "${CERT_FILE}:/tmp/fullchain.pem:ro" \
+            -v "${KEY_FILE}:/tmp/privkey.pem:ro" \
+            certbot sh -c "
+                cp /tmp/fullchain.pem ${CERT_DIR}/fullchain.pem
+                cp /tmp/privkey.pem ${CERT_DIR}/privkey.pem
+                chmod 644 ${CERT_DIR}/fullchain.pem
+                chmod 600 ${CERT_DIR}/privkey.pem
+            "
+        info "Cloudflare Origin Certificate installed."
+        echo ""
+        warn "Make sure Cloudflare SSL mode is set to 'Full (Strict)' in the dashboard."
+        ;;
+
+    # -------------------------------------------------------------------
+    self-signed)
+        echo "Creating self-signed certificate (valid for 365 days)..."
+        docker compose run --rm --entrypoint "" certbot sh -c "
+            mkdir -p ${CERT_DIR}
+            openssl req -x509 -nodes -newkey rsa:2048 -days 365 \
+                -keyout ${CERT_DIR}/privkey.pem \
+                -out ${CERT_DIR}/fullchain.pem \
+                -subj '/CN=${DOMAIN}'
+        "
+        info "Self-signed certificate created."
+        echo ""
+        warn "If using Cloudflare, set SSL mode to 'Full' (not 'Full Strict')."
+        warn "Browsers will show a warning if accessed directly (without Cloudflare)."
+        ;;
+
+    # -------------------------------------------------------------------
+    letsencrypt)
+        # First check Let's Encrypt connectivity
+        info "Checking connectivity to Let's Encrypt..."
+        if curl -s --connect-timeout 15 --max-time 20 -o /dev/null -w "%{http_code}" https://acme-v02.api.letsencrypt.org/directory 2>/dev/null | grep -q "200"; then
+            info "Let's Encrypt ACME server is reachable."
+        else
+            error "Cannot reach Let's Encrypt ACME server."
+            echo ""
+            echo "  This is common on Iranian VPS servers due to network restrictions."
+            echo "  Alternatives:"
+            echo "    ./init-ssl.sh --cloudflare ${DOMAIN}   # Cloudflare Origin Cert"
+            echo "    ./init-ssl.sh --self-signed ${DOMAIN}  # Self-signed + Cloudflare Full"
+            echo ""
+            read -r -p "Try anyway? (y/N): " CONTINUE
+            if [ "${CONTINUE}" != "y" ] && [ "${CONTINUE}" != "Y" ]; then
+                echo "Aborted."
+                exit 1
+            fi
+        fi
+
+        # Create temporary self-signed cert so nginx can start
+        info "Creating temporary self-signed cert for nginx startup..."
+        docker compose run --rm --entrypoint "" certbot sh -c "
+            mkdir -p ${CERT_DIR}
+            if [ ! -f ${CERT_DIR}/fullchain.pem ]; then
+                openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
+                    -keyout ${CERT_DIR}/privkey.pem \
+                    -out ${CERT_DIR}/fullchain.pem \
+                    -subj '/CN=${DOMAIN}'
+                echo 'Temporary self-signed cert created.'
+            else
+                echo 'Certificate already exists, skipping temp generation.'
+            fi
+        "
+        ;;
+esac
+
+# ---------------------------------------------------------------------------
+# Step 3: Start nginx
+# ---------------------------------------------------------------------------
+step "[3/4] Starting nginx-proxy..."
+
+# Stop first to ensure clean start with the new cert
+docker compose stop nginx-proxy 2>/dev/null || true
 docker compose up -d nginx-proxy
 sleep 3
 
 # Verify nginx is running
 if ! docker compose ps nginx-proxy | grep -q "Up"; then
-    error "nginx-proxy failed to start. Check: docker compose logs nginx-proxy"
+    error "nginx-proxy failed to start!"
+    echo ""
+    echo "  Check logs: docker compose logs nginx-proxy"
+    echo ""
+    # Show last few log lines for immediate diagnosis
+    docker compose logs --tail=10 nginx-proxy 2>/dev/null || true
     exit 1
 fi
 info "nginx-proxy is running."
 
-# Verify ACME challenge path is working
-info "Verifying ACME challenge path is accessible..."
-ACME_TEST=$(docker compose exec nginx-proxy wget -qO- http://127.0.0.1:80/.well-known/acme-challenge/ 2>&1 || true)
-info "ACME path check done (404 is expected if no challenge file exists yet)."
+# ---------------------------------------------------------------------------
+# Step 4: Request Let's Encrypt cert (only in LE mode)
+# ---------------------------------------------------------------------------
+if [ "${MODE}" = "letsencrypt" ]; then
+    step "[4/4] Requesting Let's Encrypt certificate for ${DOMAIN}..."
+    echo "      (using verbose mode for diagnostics)"
+    echo ""
 
-# ---- Step 4: Request real Let's Encrypt certificate ----
-echo ""
-echo "[4/5] Requesting Let's Encrypt certificate for ${DOMAIN}..."
-echo "      (this may take a minute - using verbose mode for diagnostics)"
-echo ""
+    if docker compose run --rm certbot certonly \
+        --webroot \
+        -w /var/www/certbot \
+        -d "${DOMAIN}" \
+        --email "${EMAIL}" \
+        --agree-tos \
+        --no-eff-email \
+        --force-renewal \
+        --verbose; then
+        info "Certificate obtained successfully!"
 
-if docker compose run --rm certbot certonly \
-    --webroot \
-    -w /var/www/certbot \
-    -d "${DOMAIN}" \
-    --email "${EMAIL}" \
-    --agree-tos \
-    --no-eff-email \
-    --force-renewal \
-    --verbose; then
-    info "Certificate obtained successfully!"
+        # Reload nginx with real cert
+        info "Reloading nginx with Let's Encrypt certificate..."
+        docker compose exec nginx-proxy nginx -s reload
+    else
+        CERTBOT_EXIT=$?
+        echo ""
+        error "Certbot failed (exit code: ${CERTBOT_EXIT})."
+        echo ""
+        echo "  Common causes:"
+        echo "    1. Domain DNS doesn't point to this server (${DOMAIN} -> ${RESOLVED_IP})"
+        echo "    2. Port 80 is blocked by firewall (check: ufw status, iptables -L)"
+        echo "    3. Cloudflare is intercepting the ACME challenge"
+        echo "    4. Let's Encrypt can't reach this server (sanctions/geo-blocking)"
+        echo "    5. Rate limit exceeded (https://letsencrypt.org/docs/rate-limits/)"
+        echo ""
+        echo "  Alternatives:"
+        echo "    ./init-ssl.sh --cloudflare ${DOMAIN}   # Cloudflare Origin Cert"
+        echo "    ./init-ssl.sh --self-signed ${DOMAIN}  # Self-signed + Cloudflare Full"
+        echo ""
+        echo "  The server is running with a temporary self-signed cert for now."
+        exit 1
+    fi
 else
-    CERTBOT_EXIT=$?
-    echo ""
-    error "Certbot failed (exit code: ${CERTBOT_EXIT})."
-    echo ""
-    echo "  Common causes:"
-    echo "    1. Domain DNS doesn't point to this server (${DOMAIN} -> ${RESOLVED_IP})"
-    echo "    2. Port 80 is blocked by firewall (check: ufw status, iptables -L)"
-    echo "    3. Let's Encrypt servers can't reach this server (sanctions/geo-blocking)"
-    echo "    4. Rate limit exceeded (check https://letsencrypt.org/docs/rate-limits/)"
-    echo ""
-    echo "  Debugging steps:"
-    echo "    - Check certbot logs: docker compose run --rm certbot certificates"
-    echo "    - Test port 80 from outside: curl -I http://${DOMAIN}/.well-known/acme-challenge/test"
-    echo "    - Check nginx logs: docker compose logs nginx-proxy"
-    echo ""
-    echo "  Alternative: Use Cloudflare DNS proxy for free SSL without Let's Encrypt."
-    exit 1
+    step "[4/4] Reloading nginx with new certificate..."
+    docker compose exec nginx-proxy nginx -s reload
 fi
-
-# ---- Step 5: Reload nginx with the real certificate ----
-echo ""
-echo "[5/5] Reloading nginx with real certificate..."
-docker compose exec nginx-proxy nginx -s reload
 
 echo ""
 echo "=== SSL setup complete! ==="
-echo "  - Certificate: Let's Encrypt for ${DOMAIN}"
-echo "  - Auto-renewal: handled by certbot container"
+echo "  - Mode: ${MODE}"
+echo "  - Domain: ${DOMAIN}"
+if [ "${MODE}" = "letsencrypt" ]; then
+    echo "  - Auto-renewal: handled by certbot container"
+fi
+if [ "${IS_CLOUDFLARE}" = true ]; then
+    echo "  - Cloudflare: detected (make sure SSL mode is correct in dashboard)"
+fi
 echo ""
-echo "Now start all services:"
+echo "Start all services:"
 echo "  docker compose up -d"
