@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { Menu, X, Search } from 'lucide-react';
+import { Menu, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 
 export function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
   const [activeSection, setActiveSection] = useState('hero');
   const { t, lang, setLang } = useLanguage();
+  const navigate = useNavigate();
 
   const toggleLanguage = () => setLang(lang === 'en' ? 'fa' : 'en');
 
@@ -13,6 +15,15 @@ export function Navbar() {
     setIsOpen(false);
     const el = document.getElementById(id);
     if (el) el.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const handleNav = (id: string, link?: string) => {
+    setIsOpen(false);
+    if (link) {
+      navigate(link);
+    } else {
+      scrollTo(id);
+    }
   };
 
   useEffect(() => {
@@ -37,14 +48,14 @@ export function Navbar() {
     { id: 'features', label: t('nav.products') },
     { id: 'services', label: t('nav.solutions') },
     { id: 'about', label: t('nav.about') },
-    { id: 'articles', label: t('nav.articles') },
+    { id: 'articles', label: t('nav.articles'), link: '/articles' },
     { id: 'contact', label: t('nav.contact') },
   ];
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 px-6 py-4">
       <div className="max-w-7xl mx-auto glass-panel rounded-full px-8 py-4 flex items-center justify-between">
-        <button onClick={() => scrollTo('hero')} className="flex items-center gap-3 cursor-pointer">
+        <button onClick={() => handleNav('hero')} className="flex items-center gap-3 cursor-pointer">
           <img src="/simorgh.jpg" alt="Simorgh AI Logo" className="w-10 h-10 rounded-full object-cover" />
           <span className="text-xl font-bold tracking-wider text-white">SIMORGH</span>
         </button>
@@ -53,7 +64,7 @@ export function Navbar() {
           {navItems.map((item) => (
             <button
               key={item.id}
-              onClick={() => scrollTo(item.id)}
+              onClick={() => handleNav(item.id, item.link)}
               className={`text-sm font-medium transition-colors relative ${activeSection === item.id ? 'text-cyan-400' : 'text-gray-300 hover:text-cyan-400'}`}>
               {item.label}
               {activeSection === item.id && <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-cyan-400 rounded-full" />}
@@ -78,7 +89,7 @@ export function Navbar() {
       {isOpen && (
         <div className="absolute top-24 left-6 right-6 glass-panel rounded-2xl p-6 flex flex-col gap-4 md:hidden">
           {navItems.map((item) => (
-            <button key={item.id} onClick={() => scrollTo(item.id)}
+            <button key={item.id} onClick={() => handleNav(item.id, item.link)}
               className={`py-2 font-medium text-start ${activeSection === item.id ? 'text-cyan-400' : 'text-gray-300 hover:text-cyan-400'}`}>
               {item.label}
             </button>
