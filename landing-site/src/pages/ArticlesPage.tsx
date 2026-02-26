@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { FileText, Download, BookOpen, Tag, ArrowRight, ArrowLeft } from 'lucide-react';
+import { FileText, Download, BookOpen, Tag, ArrowLeft, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 
@@ -18,7 +18,7 @@ interface Article {
   };
 }
 
-export function ArticlesSection() {
+export function ArticlesPage() {
   const { t, lang, isRtl } = useLanguage();
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,57 +40,48 @@ export function ArticlesSection() {
       });
   }, []);
 
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
   const getTitle = (a: Article) => (lang === 'fa' ? a.title_fa : a.title_en);
   const getSummary = (a: Article) => (lang === 'fa' ? a.summary_fa : a.summary_en);
-  const ViewArrow = isRtl ? ArrowLeft : ArrowRight;
+  const BackArrow = isRtl ? ArrowRight : ArrowLeft;
 
   return (
-    <section
-      id="articles"
-      className="relative py-20 px-6 overflow-hidden min-h-screen scroll-mt-24"
+    <div
+      className="min-h-screen bg-navy-950 text-white"
       dir={isRtl ? 'rtl' : 'ltr'}>
-      {/* Background */}
-      <div className="absolute inset-0">
-        <div className="absolute inset-0 bg-gradient-to-b from-navy-950 via-navy-900 to-navy-950" />
-        <div className="absolute inset-0 overflow-hidden">
-          {[...Array(3)].map((_, i) => (
-            <div
-              key={i}
-              className="absolute rounded-full opacity-10"
-              style={{
-                width: `${300 + i * 200}px`,
-                height: `${300 + i * 200}px`,
-                border: '1px solid rgba(0, 212, 255, 0.2)',
-                top: `${10 + i * 25}%`,
-                left: `${60 + i * 10}%`,
-                transform: 'translate(-50%, -50%)',
-              }}
-            />
-          ))}
-        </div>
-      </div>
 
       {/* Header */}
-      <div className="relative max-w-6xl mx-auto mb-12 md:mb-16">
-        <div className="text-center">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-cyan-500/10 border border-cyan-500/20 mb-6">
-            <BookOpen className="w-4 h-4 text-cyan-400" />
-            <span className="text-cyan-400 text-sm font-medium">{t('articles.badge')}</span>
+      <div className="relative bg-gradient-to-b from-navy-900 to-navy-950 border-b border-white/5">
+        <div className="max-w-6xl mx-auto px-6 py-8">
+          <Link
+            to="/"
+            className="inline-flex items-center gap-2 text-gray-400 hover:text-cyan-400 transition-colors mb-8">
+            <BackArrow className="w-4 h-4" />
+            <span className="text-sm font-medium">{t('nav.home')}</span>
+          </Link>
+
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20">
+              <BookOpen className="w-6 h-6 text-cyan-400" />
+            </div>
+            <h1 className="text-3xl md:text-4xl font-bold">
+              {t('articles.sectionPrefix')}
+              <span className="bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">
+                {t('articles.sectionTitle')}
+              </span>
+            </h1>
           </div>
-          <h2 className="text-3xl md:text-5xl lg:text-6xl font-bold text-white mb-4 md:mb-6 drop-shadow-lg">
-            {t('articles.sectionPrefix')}
-            <span className="bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">
-              {t('articles.sectionTitle')}
-            </span>
-          </h2>
-          <p className="text-base md:text-xl text-gray-400 max-w-3xl mx-auto">
+          <p className="text-gray-400 text-lg max-w-2xl">
             {t('articles.sectionSubtitle')}
           </p>
         </div>
       </div>
 
       {/* Content */}
-      <div className="relative max-w-6xl mx-auto">
+      <div className="max-w-6xl mx-auto px-6 py-12">
         {loading && (
           <div className="flex justify-center py-20">
             <div className="w-12 h-12 border-2 border-cyan-400/30 border-t-cyan-400 rounded-full animate-spin" />
@@ -116,7 +107,8 @@ export function ArticlesSection() {
             {articles.map((article) => (
               <div
                 key={article.slug}
-                className="group glass-card rounded-2xl p-6 md:p-8 flex flex-col transition-all duration-300">
+                className="group glass-card rounded-2xl p-6 md:p-8 flex flex-col transition-all duration-300
+                           hover:border-cyan-500/30 hover:shadow-[0_0_30px_rgba(0,212,255,0.1)]">
                 {/* Tags */}
                 {article.tags.length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-4">
@@ -132,18 +124,14 @@ export function ArticlesSection() {
                 )}
 
                 {/* Title */}
-                <h3 className="text-xl md:text-2xl font-bold text-white mb-3 group-hover:text-cyan-400 transition-colors">
+                <h2 className="text-xl md:text-2xl font-bold text-white mb-3 group-hover:text-cyan-400 transition-colors">
                   {getTitle(article)}
-                </h3>
+                </h2>
 
                 {/* Meta */}
                 <div className="flex items-center gap-4 mb-4 text-sm text-gray-500">
                   {article.author && <span>{article.author}</span>}
-                  {article.date && (
-                    <span className="flex items-center gap-1">
-                      {article.date}
-                    </span>
-                  )}
+                  {article.date && <span>{article.date}</span>}
                 </div>
 
                 {/* Summary */}
@@ -156,7 +144,7 @@ export function ArticlesSection() {
                   <a
                     href={`/articles/files/${encodeURI(article.files.en)}`}
                     download
-                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl
+                    className="inline-flex items-center gap-2 px-5 py-3 rounded-xl
                              bg-gradient-to-r from-cyan-500/20 to-cyan-600/20 border border-cyan-500/30
                              text-cyan-300 text-sm font-medium
                              hover:from-cyan-500/30 hover:to-cyan-600/30 hover:border-cyan-400/50
@@ -168,7 +156,7 @@ export function ArticlesSection() {
                   <a
                     href={`/articles/files/${encodeURI(article.files.fa)}`}
                     download
-                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl
+                    className="inline-flex items-center gap-2 px-5 py-3 rounded-xl
                              bg-gradient-to-r from-purple-500/20 to-purple-600/20 border border-purple-500/30
                              text-purple-300 text-sm font-medium
                              hover:from-purple-500/30 hover:to-purple-600/30 hover:border-purple-400/50
@@ -182,22 +170,7 @@ export function ArticlesSection() {
             ))}
           </div>
         )}
-
-        {/* View All Articles button */}
-        {!loading && !error && articles.length > 0 && (
-          <div className="text-center mt-12">
-            <Link
-              to="/articles"
-              className="group inline-flex items-center gap-2 px-8 py-3.5 rounded-full
-                       bg-gradient-to-r from-cyan-500 to-purple-600 text-white font-semibold
-                       shadow-[0_0_20px_rgba(0,212,255,0.3)] hover:shadow-[0_0_30px_rgba(0,212,255,0.5)]
-                       hover:scale-105 transition-all duration-300">
-              {t('articles.viewAll')}
-              <ViewArrow className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-            </Link>
-          </div>
-        )}
       </div>
-    </section>
+    </div>
   );
 }

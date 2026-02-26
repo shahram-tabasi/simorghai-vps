@@ -1,4 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import express from 'express';
 import cors from 'cors';
 
@@ -6,8 +6,8 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514';
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const PORT = process.env.PORT || 3001;
 
 const SYSTEM_PROMPT = `You are the Simorgh AI support assistant on the Simorgh AI landing page.
@@ -64,12 +64,12 @@ Part of ElectroKavir Company (EKC).
 
 Keep responses concise (2-4 sentences typically). If asked about pricing, suggest contacting us via email: simorgh.ekc.ai@gmail.com`;
 
-const client = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
+const client = OPENAI_API_KEY ? new OpenAI({ apiKey: OPENAI_API_KEY }) : null;
 
 app.post('/api/chat', async (req, res) => {
   if (!client) {
     return res.status(503).json({
-      response: 'Chat service is not configured. Please set the ANTHROPIC_API_KEY environment variable.'
+      response: 'Chat service is not configured. Please set the OPENAI_API_KEY environment variable.'
     });
   }
 
@@ -88,30 +88,29 @@ app.post('/api/chat', async (req, res) => {
       return res.status(400).json({ response: 'Invalid message format.' });
     }
 
-    const response = await client.messages.create({
+    const response = await client.chat.completions.create({
       model: MODEL,
       max_tokens: 500,
-      system: SYSTEM_PROMPT,
-      messages: cleanMessages,
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        ...cleanMessages,
+      ],
     });
 
-    const text = response.content
-      .filter(block => block.type === 'text')
-      .map(block => block.text)
-      .join('\n');
+    const text = response.choices[0]?.message?.content || '';
 
     res.json({ response: text || 'I apologize, I could not generate a response.' });
   } catch (error) {
-    console.error('Anthropic API error:', error);
+    console.error('OpenAI API error:', error);
     res.status(500).json({ response: 'An error occurred. Please try again later.' });
   }
 });
 
 app.get('/health', (_req, res) => {
-  res.json({ status: 'healthy', hasApiKey: !!ANTHROPIC_API_KEY });
+  res.json({ status: 'healthy', hasApiKey: !!OPENAI_API_KEY });
 });
 
 app.listen(PORT, () => {
   console.log(`Chatbot API running on port ${PORT}`);
-  console.log(`Anthropic API key: ${ANTHROPIC_API_KEY ? 'configured' : 'NOT SET'}`);
+  console.log(`OpenAI API key: ${OPENAI_API_KEY ? 'configured' : 'NOT SET'}`);
 });
