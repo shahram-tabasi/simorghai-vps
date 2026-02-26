@@ -16,7 +16,7 @@ export function Navbar() {
   };
 
   useEffect(() => {
-    const sections = ['hero', 'features', 'services', 'about', 'chatmail', 'contact'];
+    const sections = ['hero', 'features', 'services', 'about', 'articles', 'chatmail', 'contact'];
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -37,6 +37,7 @@ export function Navbar() {
     { id: 'features', label: t('nav.products') },
     { id: 'services', label: t('nav.solutions') },
     { id: 'about', label: t('nav.about') },
+    { id: 'articles', label: t('nav.articles') },
     { id: 'contact', label: t('nav.contact') },
   ];
 

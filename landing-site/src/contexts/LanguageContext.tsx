@@ -69,6 +69,16 @@ const translations: Record<string, Record<Language, string>> = {
   'chat.thinking': { en: 'Thinking...', fa: 'در حال فکر کردن...' },
   'chat.error': { en: 'Sorry, I couldn\'t process your request. Please try again.', fa: 'متأسفم، نتوانستم درخواست شما را پردازش کنم. لطفاً دوباره تلاش کنید.' },
 
+  'nav.articles': { en: 'Articles', fa: 'مقالات' },
+
+  'articles.badge': { en: 'Knowledge Base', fa: 'پایگاه دانش' },
+  'articles.sectionPrefix': { en: 'Our ', fa: '' },
+  'articles.sectionTitle': { en: 'Articles', fa: 'مقالات ما' },
+  'articles.sectionSubtitle': { en: 'Explore our latest articles and technical insights in English and Persian', fa: 'آخرین مقالات و بینش‌های فنی ما را به فارسی و انگلیسی مطالعه کنید' },
+  'articles.noArticles': { en: 'No articles available yet. Check back soon!', fa: 'هنوز مقاله‌ای موجود نیست. به زودی باز بیایید!' },
+  'articles.downloadEn': { en: 'English', fa: 'انگلیسی' },
+  'articles.downloadFa': { en: 'فارسی', fa: 'فارسی' },
+
   'chatmail.title': { en: 'Secure Messaging', fa: 'پیام‌رسان امن' },
   'chatmail.desc': { en: 'Connect with us via Delta Chat — a privacy-focused messenger', fa: 'از طریق دلتا چت با ما در ارتباط باشید — پیام‌رسان مبتنی بر حریم خصوصی' },
   'chatmail.download': { en: 'Download Delta Chat', fa: 'دانلود دلتا چت' },

@@ -4,6 +4,7 @@ import { HeroSection } from './components/HeroSection';
 import { FeaturesSection } from './components/FeaturesSection';
 import { ServicesSection } from './components/ServicesSection';
 import { AboutSection } from './components/AboutSection';
+import { ArticlesSection } from './components/ArticlesSection';
 import { ChatMailSection } from './components/ChatMailSection';
 import { Footer } from './components/Footer';
 import { ChatWidget } from './components/ChatWidget';
@@ -20,6 +21,7 @@ function AppContent() {
       <FeaturesSection />
       <ServicesSection />
       <AboutSection />
+      <ArticlesSection />
       <ChatMailSection />
       <Footer />
       <ChatWidget />
