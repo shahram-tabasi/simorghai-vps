@@ -23,16 +23,27 @@ services:
       - "${HTTPS_PORT:-443}:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./ssl:/etc/ssl/private:ro
+      - ./nginx/templates:/etc/nginx/templates:ro
+      - ./scripts/nginx-reload-watcher.sh:/usr/local/bin/nginx-reload-watcher.sh:ro
       - certbot_certs:/etc/letsencrypt:ro
       - certbot_webroot:/var/www/certbot:ro
       - ./delta-chat:/usr/share/nginx/downloads:ro
       - /opt/simorgh-articles:/usr/share/nginx/articles:ro
       - nginx_logs:/var/log/nginx
+    environment:
+      # ${DOMAIN} is the only variable substituted into the nginx template;
+      # all other $vars in the config (e.g. $host) are left untouched.
+      - DOMAIN=${DOMAIN}
+      - NGINX_ENVSUBST_FILTER=^DOMAIN$$
+    # Run the cert-reload watcher in the background so renewals are picked up
+    # without restarting nginx. The image's docker-entrypoint still processes
+    # /etc/nginx/templates before this command runs.
+    command: ["/bin/sh", "-c", "/usr/local/bin/nginx-reload-watcher.sh & exec nginx -g 'daemon off;'"]
     networks:
       - frontend_net
     depends_on:
+      certbot:
+        condition: service_healthy
       landing-site:
         condition: service_healthy
       chatbot-api:
@@ -94,21 +105,35 @@ services:
       start_period: 10s
 
   # ===========================================================================
-  # CERTBOT - Let's Encrypt SSL certificate management
+  # CERTBOT - Let's Encrypt: bootstrap + initial issuance + auto-renewal
   # ===========================================================================
+  # Single long-running service that:
+  #   1. Drops a 1-day self-signed cert at live/${DOMAIN} so nginx can boot.
+  #   2. Becomes "healthy" -> nginx-proxy starts and serves /.well-known/...
+  #   3. Requests the real Let's Encrypt cert via HTTP-01 webroot challenge.
+  #   4. Loops every 12h on `certbot renew`. nginx-proxy's reload watcher
+  #      picks up the new fullchain.pem mtime and reloads automatically.
   certbot:
     image: certbot/certbot:latest
     container_name: certbot
     volumes:
       - certbot_certs:/etc/letsencrypt
       - certbot_webroot:/var/www/certbot
-    # Renew certificates every 12 hours (only acts if renewal is needed)
-    entrypoint: /bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done'
-    depends_on:
-      - nginx-proxy
+      - ./scripts/certbot-entrypoint.sh:/usr/local/bin/certbot-entrypoint.sh:ro
+    environment:
+      - DOMAIN=${DOMAIN}
+      - CERTBOT_EMAIL=${CERTBOT_EMAIL}
+    entrypoint: ["/bin/sh", "/usr/local/bin/certbot-entrypoint.sh"]
     restart: unless-stopped
     networks:
       - frontend_net
+    healthcheck:
+      # Healthy as soon as the bootstrap cert is in place, which unblocks nginx.
+      test: ["CMD-SHELL", "test -f /var/www/certbot/.certbot-ready"]
+      interval: 3s
+      timeout: 2s
+      retries: 60
+      start_period: 5s
 
   # ===========================================================================
   # CHATMAIL RELAY - Privacy-focused messaging (Delta Chat compatible)

@@ -248,15 +248,15 @@ server {
 }
 
 # =============================================================================
-# HTTPS Server - SSL termination (Let's Encrypt or Cloudflare Origin Cert)
+# HTTPS Server - SSL termination via Let's Encrypt (managed by certbot service)
 # =============================================================================
 server {
     listen 443 ssl;
     http2 on;
-    server_name simorghai.com;
+    server_name ${DOMAIN};
 
-    ssl_certificate     /etc/letsencrypt/live/simorghai.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/simorghai.com/privkey.pem;
+    ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;
     ssl_prefer_server_ciphers off;
