@@ -2,39 +2,45 @@
 # =============================================================================
 # nginx-reload-watcher.sh
 # =============================================================================
-# Runs in the background inside the nginx-proxy container. Polls the LE
-# fullchain.pem mtime every 60s; when it changes (issuance or renewal by the
-# certbot service), reloads nginx so the new cert is picked up without a
-# restart.
+# Runs in the background inside the nginx-proxy container. Uses inotifywait
+# on /etc/letsencrypt/live to react instantly when certbot writes a new cert.
+# A short debounce window collapses the burst of writes from a single
+# issuance/renewal into one `nginx -s reload`.
+#
+# Why in-container instead of a sidecar? Avoids mounting /var/run/docker.sock
+# and the privilege-escalation surface that comes with it. The image has
+# inotify-tools baked in (see nginx/Dockerfile).
 # =============================================================================
 set -eu
 
 : "${DOMAIN:?DOMAIN env var is required}"
 
 CERT_FILE="/etc/letsencrypt/live/${DOMAIN}/fullchain.pem"
+WATCH_DIR="/etc/letsencrypt/live"
+DEBOUNCE_SECS=3
 
-log() { echo "[nginx-reload-watcher] $*"; }
+log() { echo "[reload-watcher] $*"; }
 
-# Wait for the cert file to appear (certbot bootstraps it before nginx starts,
-# but be defensive in case ordering ever drifts).
-while [ ! -f "${CERT_FILE}" ]; do
-    sleep 2
-done
+# Wait for the cert file to appear (bootstrap creates it before nginx starts,
+# but be defensive against ordering drift).
+while [ ! -f "${CERT_FILE}" ]; do sleep 1; done
 
-last_mtime=$(stat -c %Y "${CERT_FILE}" 2>/dev/null || echo 0)
-log "watching ${CERT_FILE} (initial mtime=${last_mtime})"
+log "watching ${WATCH_DIR} for cert changes"
 
-while :; do
-    sleep 60
+# Monitor close_write / moved_to / delete; certbot writes via temp files and
+# atomic rename, which surfaces as moved_to on the destination.
+inotifywait -m -q -r \
+    -e close_write -e moved_to -e delete \
+    "${WATCH_DIR}" | \
+while read -r _path _events _file; do
+    # Drain any further events that arrive within the debounce window so a
+    # multi-file renewal triggers exactly one reload.
+    while read -r -t "${DEBOUNCE_SECS}" _ _ _; do :; done
+
     if [ -f "${CERT_FILE}" ]; then
-        cur_mtime=$(stat -c %Y "${CERT_FILE}" 2>/dev/null || echo 0)
-        if [ "${cur_mtime}" != "${last_mtime}" ]; then
-            log "cert changed (mtime ${last_mtime} -> ${cur_mtime}); reloading nginx"
-            if nginx -s reload; then
-                last_mtime="${cur_mtime}"
-            else
-                log "nginx reload failed; will retry on next change"
-            fi
-        fi
+        log "cert change settled; reloading nginx"
+        nginx -s reload || log "nginx reload failed"
+    else
+        log "cert file missing after change; skipping reload"
     fi
 done

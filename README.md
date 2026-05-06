@@ -89,40 +89,38 @@ docker compose exec chatmail bash
 
 ## SSL
 
-TLS is handled end-to-end by the `certbot` Docker Compose service using
-Let's Encrypt with HTTP-01 webroot challenges. There is nothing to run
-manually — `docker compose up -d` is enough.
+TLS is handled entirely by Docker Compose using Let's Encrypt with the
+HTTP-01 webroot challenge. `docker compose up -d` is sufficient — there is
+nothing to run by hand.
 
-How it works:
+Three single-purpose services, plus an in-container reloader:
 
-1. On first start, the `certbot` service drops a 1-day self-signed cert at
-   `/etc/letsencrypt/live/${DOMAIN}/` so `nginx-proxy` can boot its HTTPS
-   server block.
-2. Once `nginx-proxy` is serving traffic on port 80, `certbot` runs the
-   ACME HTTP-01 challenge and replaces the dummy with the real cert.
-3. `certbot` then loops every 12 hours running `certbot renew`. Renewals
-   are no-ops until the cert is within 30 days of expiry.
-4. `nginx-proxy` runs a watcher that polls `fullchain.pem`'s mtime once a
-   minute and runs `nginx -s reload` whenever it changes — issuance and
-   renewals take effect without a restart.
+| Service             | Lifecycle      | Role                                                                 |
+|---------------------|----------------|----------------------------------------------------------------------|
+| `certbot-bootstrap` | one-shot       | Drops a 1-day self-signed cert so `nginx-proxy` can boot its HTTPS block |
+| `nginx-proxy`       | long-running   | Serves traffic; runs `inotifywait` on `/etc/letsencrypt/live` and `nginx -s reload`s on change |
+| `certbot-init`      | one-shot       | After nginx is healthy, requests the real LE cert via webroot. Idempotent (marker file). Always exits 0. |
+| `certbot-renew`     | long-running   | Every 12h: renews if a real cert exists, otherwise retries issuance. Lets the deployment self-heal. |
 
 Prerequisites:
 
 - `DOMAIN` and `CERTBOT_EMAIL` set in `.env`.
 - `DOMAIN` A/AAAA records pointing at this server's public IP.
-- Port 80 reachable from the internet (Let's Encrypt's validation servers
-  hit `http://${DOMAIN}/.well-known/acme-challenge/...`). If you use
-  Cloudflare in front of this server, set the proxy mode to "DNS only"
-  (gray cloud) for the cert request, or use DNS-01 challenges instead.
+- Port 80 reachable from the internet (Let's Encrypt validators hit
+  `http://${DOMAIN}/.well-known/acme-challenge/...`). If you use Cloudflare
+  in front of this server, set the proxy mode to "DNS only" (gray cloud)
+  for the cert request, or switch to a DNS-01 challenge.
+
+Tunable: `RENEW_INTERVAL` in `.env` (default `12h`).
 
 Useful commands:
 
 ```bash
 # Inspect cert / issuer / expiry
-docker compose exec certbot certbot certificates
+docker compose run --rm certbot-renew certbot certificates
 
 # Force-renew now (e.g. after fixing DNS)
-docker compose exec certbot certbot renew --force-renewal --webroot -w /var/www/certbot
+docker compose run --rm certbot-renew certbot renew --force-renewal --webroot -w /var/www/certbot
 
 # Reset and re-request from scratch (wipes the volume — only do this if stuck)
 docker compose down
@@ -150,12 +148,15 @@ simorghai-vps/
 ├── chatmail/                   # Chatmail relay
 │   └── Dockerfile
 ├── nginx/
+│   ├── Dockerfile                 # nginx:alpine + inotify-tools
 │   ├── nginx.conf
 │   └── templates/
 │       └── default.conf.template  # ${DOMAIN} substituted at boot
 ├── scripts/
-│   ├── certbot-entrypoint.sh      # bootstrap + issue + renew loop
-│   └── nginx-reload-watcher.sh    # reloads nginx on cert mtime change
+│   ├── certbot-bootstrap.sh       # one-shot: temp self-signed cert
+│   ├── certbot-init.sh            # one-shot: real LE cert via webroot
+│   ├── certbot-renew.sh           # long-running: 12h renew/retry loop
+│   └── nginx-reload-watcher.sh    # in-container inotify reloader
 ├── delta-chat/                    # Pre-downloaded binaries
 └── .github/workflows/
     └── download-deltachat.yml
