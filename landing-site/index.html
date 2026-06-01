@@ -2,16 +2,103 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/simorgh.jpg" />
+    <link rel="icon" type="image/jpeg" href="/simorgh.jpg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="theme-color" content="#02040a" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <title>SIMORGH AI</title>
+
+    <!-- ============================================================= -->
+    <!-- SEO / social / AI-crawler metadata                            -->
+    <!-- NOTE: update the domain below if your site is not simorghai.com -->
+    <!-- ============================================================= -->
+    <title>Simorgh AI — Where Ancient Wisdom Meets Artificial Intelligence</title>
+    <meta name="description" content="Simorgh AI builds advanced artificial intelligence for the electrical industry: automatic extraction of technical data, advanced electrical calculations, and design automation. Products: Simorgh AI, EPLANIX and EPLANIX Design Suite." />
+    <meta name="keywords" content="Simorgh AI, artificial intelligence, electrical engineering AI, EPLANIX, single-line diagram, voltage drop calculation, load flow, AI platform, هوش مصنوعی, سیمرغ" />
+    <meta name="author" content="Simorgh AI" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
+    <link rel="canonical" href="https://simorghai.com/" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Simorgh AI" />
+    <meta property="og:title" content="Simorgh AI — Where Ancient Wisdom Meets Artificial Intelligence" />
+    <meta property="og:description" content="Advanced AI for the electrical industry: data extraction, electrical calculations, and design automation." />
+    <meta property="og:url" content="https://simorghai.com/" />
+    <meta property="og:image" content="https://simorghai.com/simorgh.jpg" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale:alternate" content="fa_IR" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Simorgh AI — Where Ancient Wisdom Meets Artificial Intelligence" />
+    <meta name="twitter:description" content="Advanced AI for the electrical industry: data extraction, electrical calculations, and design automation." />
+    <meta name="twitter:image" content="https://simorghai.com/simorgh.jpg" />
+
+    <!-- Structured data: Organization + products. Helps search engines and AI -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "Simorgh AI",
+      "url": "https://simorghai.com/",
+      "logo": "https://simorghai.com/simorgh.jpg",
+      "description": "Simorgh AI develops advanced artificial intelligence for the electrical industry, including automatic technical-data extraction, advanced electrical calculations, and design automation.",
+      "sameAs": [],
+      "makesOffer": [
+        { "@type": "Offer", "itemOffered": { "@type": "SoftwareApplication", "name": "Simorgh AI", "applicationCategory": "BusinessApplication", "description": "Automatic extraction of specialized electrical data from technical documents and advanced electrical calculations such as voltage drop, current, power, and load-flow analysis." } },
+        { "@type": "Offer", "itemOffered": { "@type": "SoftwareApplication", "name": "EPLANIX Design Suite", "applicationCategory": "BusinessApplication", "description": "Records and manages project materials and consumables, tracks inventory automatically, and calculates project costs." } },
+        { "@type": "Offer", "itemOffered": { "@type": "SoftwareApplication", "name": "EPLANIX", "applicationCategory": "DesignApplication", "description": "Automatic drawing of single-line diagrams and layouts." } }
+      ]
+    }
+    </script>
   </head>
-  <body>
-    <div id="root"></div>
+  <body style="background:#02040a">
+    <!-- =============================================================
+         App mount point.
+         The block below is real, crawlable content for search engines and
+         AI crawlers that do not run JavaScript (GPTBot, ClaudeBot, etc.).
+         React replaces it the instant the app mounts, so it has no effect
+         on the visual design — the background image, graphics and layout
+         are all unchanged.
+         ============================================================= -->
+    <div id="root">
+      <main style="max-width:900px;margin:0 auto;padding:40px 20px;color:#e7ecf5;font-family:system-ui,sans-serif;line-height:1.7">
+        <h1>Simorgh AI</h1>
+        <p><strong>Where Ancient Wisdom Meets Artificial Intelligence.</strong></p>
+        <p>Simorgh AI develops advanced artificial intelligence solutions for the modern
+        electrical industry, combining deep technical capability with practical engineering tools.</p>
+
+        <h2>Our Products</h2>
+        <h3>Simorgh AI</h3>
+        <p>A smart solution for the automatic extraction of specialized electrical data from
+        technical documents (including drawings, catalogs, and reports) and for performing
+        advanced electrical calculations such as voltage drop, current, power, and load-flow analysis.</p>
+        <h3>EPLANIX Design Suite</h3>
+        <p>Software for recording and managing project materials and consumables that
+        automatically tracks inventory and calculates project costs.</p>
+        <h3>EPLANIX</h3>
+        <p>Automatic drawing of single-line diagrams and layouts.</p>
+
+        <h2>Our Services</h2>
+        <p>We design, implement, and manage a complete AI platform for your organization —
+        without the need to hire even a single in-house employee. The platform is tailored to
+        your company's structure and industry, covers all current and future AI needs of the
+        organization, and is permanently managed by our expert team.</p>
+
+        <h2>About Simorgh</h2>
+        <p>The Simorgh, in Iranian mythology, symbolizes wisdom, knowledge, and guidance.
+        Inspired by this ancient concept, Simorgh Group develops artificial intelligence that —
+        like the Simorgh — paves the path of wisdom and guides the way toward a smarter future.
+        We strive to create an artificial intelligence that is not only fast and efficient, but
+        also wise and purpose-driven, because the future belongs to knowledge.</p>
+
+        <h2>Blog</h2>
+        <p>Read our latest articles on artificial intelligence, technology, and the future of nations:
+        <a href="/en/blog">English blog</a> · <a href="/fa/blog">وبلاگ فارسی</a>.</p>
+      </main>
+    </div>
     <script type="module" src="/src/index.tsx"></script>
   </body>
 </html>

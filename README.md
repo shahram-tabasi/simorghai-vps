@@ -47,6 +47,17 @@ Internet
 
 ## Quick Start
 
+On a fresh Ubuntu/Debian VPS, bootstrap the server first (installs Docker,
+creates swap, configures the firewall):
+
+```bash
+git clone https://github.com/shahram-tabasi/simorghai-vps.git
+cd simorghai-vps
+sudo bash scripts/vps-setup.sh
+```
+
+Then configure and launch:
+
 ```bash
 # 1. Clone
 git clone https://github.com/shahram-tabasi/simorghai-vps.git

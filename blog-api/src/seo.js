@@ -28,6 +28,9 @@ function isoDate(value) {
 function buildSitemap(siteUrl, allPosts) {
   const urls = [];
 
+  // Landing homepage.
+  urls.push({ loc: `${siteUrl}/` });
+
   // The two blog index pages.
   for (const lang of LANGS) {
     urls.push({
@@ -72,11 +75,23 @@ ${body}
 }
 
 function buildRobots(siteUrl) {
+  // Explicitly welcome major AI / answer-engine crawlers so the site's content
+  // can be read and cited by AI assistants, while keeping the admin panel out.
+  const aiBots = [
+    'GPTBot', 'OAI-SearchBot', 'ChatGPT-User',
+    'ClaudeBot', 'Claude-Web', 'anthropic-ai',
+    'PerplexityBot', 'Google-Extended', 'Applebot-Extended',
+    'CCBot', 'Bytespider', 'Amazonbot', 'cohere-ai',
+  ];
+  const aiBlocks = aiBots
+    .map((bot) => `User-agent: ${bot}\nAllow: /\nDisallow: /admin\n`)
+    .join('\n');
+
   return `User-agent: *
 Allow: /
-
 Disallow: /admin
 
+${aiBlocks}
 Sitemap: ${siteUrl}/sitemap.xml
 `;
 }
