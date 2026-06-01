@@ -6,11 +6,19 @@ import { FeaturesSection } from './components/FeaturesSection';
 import { ServicesSection } from './components/ServicesSection';
 import { AboutSection } from './components/AboutSection';
 import { ArticlesSection } from './components/ArticlesSection';
-import { ChatMailSection } from './components/ChatMailSection';
 import { Footer } from './components/Footer';
 import { ChatWidget } from './components/ChatWidget';
-import { ArticlesPage } from './pages/ArticlesPage';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
+
+// The old PDF-based /articles page is superseded by the server-rendered blog.
+// Redirect any old links to the blog in the visitor's current language.
+function BlogRedirect() {
+  const { lang } = useLanguage();
+  React.useEffect(() => {
+    window.location.replace(`/${lang}/blog`);
+  }, [lang]);
+  return null;
+}
 
 function HomePage() {
   return (
@@ -21,7 +29,6 @@ function HomePage() {
       <ServicesSection />
       <AboutSection />
       <ArticlesSection />
-      <ChatMailSection />
       <Footer />
       <ChatWidget />
     </>
@@ -36,7 +43,7 @@ function AppContent() {
       dir={isRtl ? 'rtl' : 'ltr'}>
       <Routes>
         <Route path="/" element={<HomePage />} />
-        <Route path="/articles" element={<ArticlesPage />} />
+        <Route path="/articles" element={<BlogRedirect />} />
       </Routes>
     </main>
   );

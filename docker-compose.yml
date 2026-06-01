@@ -2,10 +2,15 @@
 # Simorgh AI VPS - Docker Compose
 # =============================================================================
 # Services:
-#   - nginx-proxy:   TLS termination, reverse proxy to EKC products & landing
-#   - landing-site:  React/Vite marketing website
-#   - chatbot-api:   Anthropic-powered product assistant
-#   - chatmail:      Privacy-focused email relay (Delta Chat)
+#   - nginx-proxy:       TLS termination, reverse proxy. Built from
+#                        nginx/Dockerfile (nginx:alpine + inotify-tools).
+#   - landing-site:      React/Vite marketing website
+#   - chatbot-api:       Anthropic-powered product assistant
+#   - certbot-bootstrap: one-shot, drops a self-signed cert so nginx can boot
+#   - certbot-init:      one-shot, requests the real LE cert via webroot
+#   - certbot-renew:     long-running, 12h renewal loop (auto-retries issuance
+#                        if the initial attempt failed)
+#   - blog-api:          Bilingual SEO blog (SSR) + admin panel + SQLite
 #
 # Usage:
 #   cp .env.example .env && docker compose up -d
@@ -13,29 +18,63 @@
 
 services:
   # ===========================================================================
+  # CERTBOT BOOTSTRAP - one-shot, runs before nginx.
+  # ===========================================================================
+  # Creates a 1-day self-signed cert at live/${DOMAIN}/ if no cert exists yet.
+  # Lets nginx-proxy's HTTPS server block start; certbot-init will replace it
+  # with a real Let's Encrypt cert as soon as nginx is healthy.
+  certbot-bootstrap:
+    image: certbot/certbot:latest
+    container_name: certbot-bootstrap
+    volumes:
+      - certbot_certs:/etc/letsencrypt
+      - ./scripts/certbot-bootstrap.sh:/usr/local/bin/certbot-bootstrap.sh:ro
+    environment:
+      - DOMAIN=${DOMAIN}
+    entrypoint: ["/bin/sh", "/usr/local/bin/certbot-bootstrap.sh"]
+    networks:
+      - frontend_net
+    restart: "no"
+
+  # ===========================================================================
   # NGINX PROXY - Main entry point, TLS termination & reverse proxy
   # ===========================================================================
   nginx-proxy:
-    image: nginx:alpine
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    image: simorgh-nginx:latest
     container_name: nginx-proxy
     ports:
       - "${HTTP_PORT:-80}:80"
       - "${HTTPS_PORT:-443}:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./ssl:/etc/ssl/private:ro
+      - ./nginx/templates:/etc/nginx/templates:ro
+      - ./scripts/nginx-reload-watcher.sh:/usr/local/bin/nginx-reload-watcher.sh:ro
       - certbot_certs:/etc/letsencrypt:ro
       - certbot_webroot:/var/www/certbot:ro
-      - ./delta-chat:/usr/share/nginx/downloads:ro
       - /opt/simorgh-articles:/usr/share/nginx/articles:ro
       - nginx_logs:/var/log/nginx
+    environment:
+      # ${DOMAIN} is the only variable substituted into the nginx template;
+      # all other $vars in the config (e.g. $host) are left untouched.
+      - DOMAIN=${DOMAIN}
+      - NGINX_ENVSUBST_FILTER=^DOMAIN$$
+    # Run the inotify-based cert-reload watcher in the background so renewals
+    # take effect immediately. The image's docker-entrypoint still processes
+    # /etc/nginx/templates before this command runs.
+    command: ["/bin/sh", "-c", "/usr/local/bin/nginx-reload-watcher.sh & exec nginx -g 'daemon off;'"]
     networks:
       - frontend_net
     depends_on:
+      certbot-bootstrap:
+        condition: service_completed_successfully
       landing-site:
         condition: service_healthy
       chatbot-api:
+        condition: service_healthy
+      blog-api:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
@@ -94,56 +133,99 @@ services:
       start_period: 10s
 
   # ===========================================================================
-  # CERTBOT - Let's Encrypt SSL certificate management
+  # CERTBOT INIT - one-shot, runs after nginx-proxy is healthy.
   # ===========================================================================
-  certbot:
+  # Wipes the dummy cert and requests the real one via the HTTP-01 webroot
+  # challenge. Idempotent (skipped via marker file on subsequent ups). Always
+  # exits 0 so transient failure doesn't break the compose chain;
+  # certbot-renew handles retries.
+  certbot-init:
     image: certbot/certbot:latest
-    container_name: certbot
+    container_name: certbot-init
     volumes:
       - certbot_certs:/etc/letsencrypt
       - certbot_webroot:/var/www/certbot
-    # Renew certificates every 12 hours (only acts if renewal is needed)
-    entrypoint: /bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done'
+      - ./scripts/certbot-init.sh:/usr/local/bin/certbot-init.sh:ro
+    environment:
+      - DOMAIN=${DOMAIN}
+      - CERTBOT_EMAIL=${CERTBOT_EMAIL}
+    entrypoint: ["/bin/sh", "/usr/local/bin/certbot-init.sh"]
     depends_on:
-      - nginx-proxy
-    restart: unless-stopped
+      nginx-proxy:
+        condition: service_healthy
     networks:
       - frontend_net
+    restart: "no"
 
   # ===========================================================================
-  # CHATMAIL RELAY - Privacy-focused messaging (Delta Chat compatible)
+  # CERTBOT RENEW - long-running, 12h loop.
   # ===========================================================================
-  chatmail:
-    image: ghcr.io/shahram-tabasi/chatmail-relay:latest
-    container_name: chatmail
-    privileged: true
-    restart: unless-stopped
-    ports:
-      - "25:25"
-      - "465:465"
-      - "587:587"
-      - "143:143"
-      - "993:993"
-      - "3478:3478"
+  # If a real cert exists, runs `certbot renew` (idempotent). If not, retries
+  # the initial issuance — lets the deployment self-heal once DNS / port 80 /
+  # firewall are sorted, without operator action. nginx-proxy's inotify
+  # watcher reloads nginx instantly on each successful issuance/renewal.
+  certbot-renew:
+    image: certbot/certbot:latest
+    container_name: certbot-renew
     volumes:
-      - chatmail_var:/var
-      - chatmail_home:/home
-      - chatmail_opt:/opt
-      - chatmail_etc:/etc
-      - chatmail_root:/root
-      - chatmail_usr:/usr
-    tmpfs:
-      - /run
+      - certbot_certs:/etc/letsencrypt
+      - certbot_webroot:/var/www/certbot
+      - ./scripts/certbot-renew.sh:/usr/local/bin/certbot-renew.sh:ro
+    environment:
+      - DOMAIN=${DOMAIN}
+      - CERTBOT_EMAIL=${CERTBOT_EMAIL}
+      - RENEW_INTERVAL=${RENEW_INTERVAL:-12h}
+    entrypoint: ["/bin/sh", "/usr/local/bin/certbot-renew.sh"]
+    depends_on:
+      certbot-init:
+        condition: service_completed_successfully
     networks:
-      - chatmail_net
+      - frontend_net
+    restart: unless-stopped
+
+  # ===========================================================================
+  # BLOG API - Bilingual (FA/EN) SEO blog with admin panel & SQLite
+  # ===========================================================================
+  # Server-side rendered blog pages for top-tier SEO, a visual admin panel at
+  # /admin, image uploads, an email-capture form, and auto-generated
+  # sitemap.xml / robots.txt. Data persists in the blog_data volume.
+  blog-api:
+    build:
+      context: ./blog-api
+      dockerfile: Dockerfile
+    image: simorgh-blog-api:latest
+    container_name: blog-api
+    expose:
+      - "4000"
+    environment:
+      - PORT=4000
+      - SITE_URL=https://${DOMAIN}
+      - ADMIN_USER=${BLOG_ADMIN_USER:-admin}
+      - ADMIN_PASSWORD=${BLOG_ADMIN_PASSWORD}
+      - SESSION_SECRET=${BLOG_SESSION_SECRET}
+      # Optional SMTP for the email-capture feature (leave blank to disable)
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - SMTP_FROM=${SMTP_FROM:-}
+    volumes:
+      - blog_data:/data
+    networks:
+      - frontend_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
 # =============================================================================
 # NETWORKS
 # =============================================================================
 networks:
   frontend_net:
-    driver: bridge
-  chatmail_net:
     driver: bridge
 
 # =============================================================================
@@ -153,9 +235,4 @@ volumes:
   nginx_logs:
   certbot_certs:
   certbot_webroot:
-  chatmail_var:
-  chatmail_home:
-  chatmail_opt:
-  chatmail_etc:
-  chatmail_root:
-  chatmail_usr:
+  blog_data:

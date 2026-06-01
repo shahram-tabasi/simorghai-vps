@@ -79,6 +79,7 @@ const translations: Record<string, Record<Language, string>> = {
   'articles.downloadEn': { en: 'English', fa: 'انگلیسی' },
   'articles.downloadFa': { en: 'فارسی', fa: 'فارسی' },
   'articles.viewAll': { en: 'View All Articles', fa: 'مشاهده همه مقالات' },
+  'articles.readMore': { en: 'Read more', fa: 'ادامه مطلب' },
 
   'chatmail.title': { en: 'Secure Messaging', fa: 'پیام‌رسان امن' },
   'chatmail.desc': { en: 'Connect with us via Delta Chat — a privacy-focused messenger', fa: 'از طریق دلتا چت با ما در ارتباط باشید — پیام‌رسان مبتنی بر حریم خصوصی' },

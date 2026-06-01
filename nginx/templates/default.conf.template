@@ -4,7 +4,6 @@
 # Routing:
 #   /               -> Landing Site (static React app)
 #   /api/chat       -> Chatbot API (Anthropic proxy)
-#   /downloads/*    -> Delta Chat pre-downloaded binaries
 #   /chatbot/*      -> Reverse proxy to simorghai.electrokavir.com/chatbot
 #   /eplanix/*      -> Reverse proxy to simorghai.electrokavir.com/eplanix
 #   /simorgh-draft/*-> Reverse proxy to simorghai.electrokavir.com/simorgh-draft
@@ -17,6 +16,11 @@ upstream landing {
 
 upstream chatbot_api {
     server chatbot-api:3001;
+    keepalive 8;
+}
+
+upstream blog_api {
+    server blog-api:4000;
     keepalive 8;
 }
 
@@ -84,34 +88,6 @@ server {
         add_header Content-Disposition "attachment";
         add_header Cache-Control "public, max-age=3600";
         add_header Access-Control-Allow-Origin "*";
-    }
-
-    # -----------------------------------------------------------------
-    # Delta Chat downloads (pre-downloaded binaries, with fallbacks)
-    # -----------------------------------------------------------------
-    location /downloads/ {
-        alias /usr/share/nginx/downloads/;
-        autoindex off;
-        expires 7d;
-        add_header Cache-Control "public";
-        try_files $uri @download_fallback;
-    }
-
-    # Fallback: redirect to official Delta Chat downloads if local files missing
-    location @download_fallback {
-        # Android APK
-        if ($uri ~* "deltachat-android\.apk$") {
-            return 302 https://download.delta.chat/android/deltachat-android-latest.apk;
-        }
-        # Linux AppImage
-        if ($uri ~* "deltachat-desktop\.AppImage$") {
-            return 302 https://download.delta.chat/desktop/deltachat-desktop-latest.AppImage;
-        }
-        # Windows exe
-        if ($uri ~* "deltachat-desktop\.exe$") {
-            return 302 https://download.delta.chat/desktop/deltachat-desktop-latest.exe;
-        }
-        return 404;
     }
 
     # -----------------------------------------------------------------
@@ -224,6 +200,42 @@ server {
     }
 
     # -----------------------------------------------------------------
+    # BLOG (server-rendered bilingual SEO blog + admin panel)
+    # -----------------------------------------------------------------
+    # Language-prefixed blog pages and feeds: /en/blog, /fa/blog, /xx/rss.xml
+    location ~ ^/(en|fa)/(blog|rss\.xml) {
+        proxy_pass http://blog_api;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+    }
+
+    # Blog index redirect, admin panel, uploads, assets, email capture
+    location ~ ^/(blog|admin|uploads|blog-assets|subscribe)($|/) {
+        proxy_pass http://blog_api;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+        client_max_body_size 15M;
+    }
+
+    # SEO files served by the blog service
+    location = /sitemap.xml {
+        proxy_pass http://blog_api;
+        proxy_set_header Host $host;
+    }
+    location = /robots.txt {
+        proxy_pass http://blog_api;
+        proxy_set_header Host $host;
+    }
+
+    # -----------------------------------------------------------------
     # Landing Site (default - must be last)
     # -----------------------------------------------------------------
     location / {
@@ -248,15 +260,15 @@ server {
 }
 
 # =============================================================================
-# HTTPS Server - SSL termination (Let's Encrypt or Cloudflare Origin Cert)
+# HTTPS Server - SSL termination via Let's Encrypt (managed by certbot service)
 # =============================================================================
 server {
     listen 443 ssl;
     http2 on;
-    server_name simorghai.com;
+    server_name ${DOMAIN};
 
-    ssl_certificate     /etc/letsencrypt/live/simorghai.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/simorghai.com/privkey.pem;
+    ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;
     ssl_prefer_server_ciphers off;
@@ -313,30 +325,6 @@ server {
         add_header Content-Disposition "attachment";
         add_header Cache-Control "public, max-age=3600";
         add_header Access-Control-Allow-Origin "*";
-    }
-
-    # -----------------------------------------------------------------
-    # Delta Chat downloads (pre-downloaded binaries, with fallbacks)
-    # -----------------------------------------------------------------
-    location /downloads/ {
-        alias /usr/share/nginx/downloads/;
-        autoindex off;
-        expires 7d;
-        add_header Cache-Control "public";
-        try_files $uri @download_fallback_ssl;
-    }
-
-    location @download_fallback_ssl {
-        if ($uri ~* "deltachat-android\.apk$") {
-            return 302 https://download.delta.chat/android/deltachat-android-latest.apk;
-        }
-        if ($uri ~* "deltachat-desktop\.AppImage$") {
-            return 302 https://download.delta.chat/desktop/deltachat-desktop-latest.AppImage;
-        }
-        if ($uri ~* "deltachat-desktop\.exe$") {
-            return 302 https://download.delta.chat/desktop/deltachat-desktop-latest.exe;
-        }
-        return 404;
     }
 
     # -----------------------------------------------------------------
@@ -445,6 +433,42 @@ server {
 
         proxy_ssl_server_name on;
         proxy_ssl_verify off;
+    }
+
+    # -----------------------------------------------------------------
+    # BLOG (server-rendered bilingual SEO blog + admin panel)
+    # -----------------------------------------------------------------
+    # Language-prefixed blog pages and feeds: /en/blog, /fa/blog, /xx/rss.xml
+    location ~ ^/(en|fa)/(blog|rss\.xml) {
+        proxy_pass http://blog_api;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+    }
+
+    # Blog index redirect, admin panel, uploads, assets, email capture
+    location ~ ^/(blog|admin|uploads|blog-assets|subscribe)($|/) {
+        proxy_pass http://blog_api;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+        client_max_body_size 15M;
+    }
+
+    # SEO files served by the blog service
+    location = /sitemap.xml {
+        proxy_pass http://blog_api;
+        proxy_set_header Host $host;
+    }
+    location = /robots.txt {
+        proxy_pass http://blog_api;
+        proxy_set_header Host $host;
     }
 
     # -----------------------------------------------------------------

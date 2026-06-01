@@ -13,14 +13,14 @@ Internet
 │  TLS termination & routing                              │
 ├─────────────────────────────────────────────────────────┤
 │  /               → Landing Site (React/Vite)            │
-│  /api/chat       → Chatbot API (Anthropic Claude)       │
-│  /downloads/*    → Delta Chat binaries (pre-downloaded) │
+│  /api/chat       → Chatbot API (OpenAI)                 │
+│  /en/blog, /fa/blog → Blog API (SSR bilingual blog)     │
+│  /admin          → Blog API (visual admin panel)        │
+│  /sitemap.xml, /robots.txt → Blog API (SEO)             │
 │  /chatbot/*      → RP → simorghai.electrokavir.com      │
 │  /eplanix/*      → RP → simorghai.electrokavir.com      │
 │  /simorgh-draft/*→ RP → simorghai.electrokavir.com      │
 └─────────────────────────────────────────────────────────┘
-
-Chatmail Relay: ports 25, 465, 587, 143, 993, 3478
 ```
 
 ## Services
@@ -29,18 +29,34 @@ Chatmail Relay: ports 25, 465, 587, 143, 993, 3478
 |---|---|---|
 | **nginx-proxy** | TLS termination, reverse proxy to EKC products & local services | 80, 443 |
 | **landing-site** | Simorgh AI marketing website with product cards | internal |
-| **chatbot-api** | Anthropic Claude-powered product support chatbot | internal |
-| **chatmail** | Privacy-focused email relay (Delta Chat compatible) | 25, 465, 587, 143, 993, 3478 |
+| **chatbot-api** | OpenAI-powered product support chatbot | internal |
+| **blog-api** | Bilingual (EN/FA) server-rendered SEO blog + visual admin panel (SQLite) | internal |
 
 ## Features
 
 - **Product Cards**: 3 products (Simorgh AI, EPLANIX Design Suite, EPLANIX) — "Launch App" buttons reverse-proxy to `simorghai.electrokavir.com`
-- **AI Chat Widget**: Floating chatbot powered by Anthropic Claude API with full product knowledge
-- **Bilingual**: English/Persian (Farsi) with RTL support
-- **Delta Chat**: Pre-downloaded from GitHub (VPS has no free internet) via weekly CI workflow
-- **Chatmail Relay**: Privacy-focused messaging service
+- **AI Chat Widget**: Floating chatbot powered by the OpenAI API with full product knowledge
+- **Bilingual Blog (SEO)**: Server-rendered articles in English (default) and Persian (RTL),
+  with per-language meta tags, OpenGraph, `hreflang` alternates, JSON-LD Article schema,
+  auto-generated `sitemap.xml` / `robots.txt` and RSS feeds — built to rank.
+- **Visual Admin Panel** (`/admin`): write bilingual posts in a Markdown editor with tables,
+  code blocks, YouTube embeds and image upload (auto-converted to WebP); draft/publish workflow.
+- **Email capture**: an opt-in "send me the full analysis" form on each article (stored in the
+  DB; optionally relayed via external SMTP).
+- **Bilingual UI**: English/Persian (Farsi) with RTL support across the whole site.
 
 ## Quick Start
+
+On a fresh Ubuntu/Debian VPS, bootstrap the server first (installs Docker,
+creates swap, configures the firewall):
+
+```bash
+git clone https://github.com/shahram-tabasi/simorghai-vps.git
+cd simorghai-vps
+sudo bash scripts/vps-setup.sh
+```
+
+Then configure and launch:
 
 ```bash
 # 1. Clone
@@ -49,49 +65,79 @@ cd simorghai-vps
 
 # 2. Configure
 cp .env.example .env
-# Edit .env — at minimum set ANTHROPIC_API_KEY
+# Edit .env — at minimum set:
+#   OPENAI_API_KEY        (chat widget)
+#   BLOG_ADMIN_PASSWORD   (admin panel login)
+#   BLOG_SESSION_SECRET   (any long random string)
 
-# 3. (Optional) Place Delta Chat binaries
-mkdir -p delta-chat
-# Place deltachat-android.apk and deltachat-desktop.AppImage in delta-chat/
-
-# 4. Start
+# 3. Start
 docker compose up -d
 
-# 5. Verify
+# 4. Verify
 docker compose ps
 curl http://localhost/health
 ```
 
-## Delta Chat Downloads
+The blog ships with one ready-made bilingual article on first run, so it is never
+blank. Sign in at `https://<DOMAIN>/admin` to write more.
 
-The VPS has no free internet, so Delta Chat binaries are pre-downloaded.
+## Blog & Admin Panel
 
-**Option A: GitHub Actions (automatic)**
-The `download-deltachat.yml` workflow runs weekly and publishes binaries as GitHub Release assets. Download and place in `delta-chat/`.
+- Public blog: `https://<DOMAIN>/en/blog` and `https://<DOMAIN>/fa/blog`
+  (English is the default; Persian-speaking visitors are gently offered a switch).
+- Admin panel: `https://<DOMAIN>/admin` — log in with `BLOG_ADMIN_USER` /
+  `BLOG_ADMIN_PASSWORD` from `.env`.
+- Each post stores both languages side by side; leaving one language empty simply
+  means it is not published in that language.
+- Content, the SQLite database and uploaded images persist in the `blog_data`
+  Docker volume.
+- The email-capture form works without SMTP (leads are stored). To actually send
+  mail, set `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` and `SMTP_FROM` in `.env`.
 
-**Option B: Manual**
-```bash
-# On a machine with internet:
-wget -O delta-chat/deltachat-android.apk "https://download.delta.chat/android/deltachat-android-latest.apk"
-wget -O delta-chat/deltachat-desktop.AppImage "https://download.delta.chat/desktop/deltachat-desktop-latest.AppImage"
-```
-
-## Chatmail Setup
-
-After the first start:
-```bash
-docker compose exec chatmail bash
-./scripts/cmdeploy init chat.yourdomain.com
-./scripts/cmdeploy run --ssh-host localhost
-./scripts/cmdeploy dns --ssh-host localhost
-```
+> **Content note:** publish original content (or short, clearly-attributed quotes
+> with a link to the source). Republishing third-party articles in full is both a
+> copyright risk and bad for SEO (search engines down-rank duplicated content).
 
 ## SSL
 
-1. Place certs in `ssl/fullchain.pem` and `ssl/privkey.pem`
-2. Uncomment the HTTPS server block in `nginx/conf.d/default.conf`
-3. `docker compose restart nginx-proxy`
+TLS is handled entirely by Docker Compose using Let's Encrypt with the
+HTTP-01 webroot challenge. `docker compose up -d` is sufficient — there is
+nothing to run by hand.
+
+Three single-purpose services, plus an in-container reloader:
+
+| Service             | Lifecycle      | Role                                                                 |
+|---------------------|----------------|----------------------------------------------------------------------|
+| `certbot-bootstrap` | one-shot       | Drops a 1-day self-signed cert so `nginx-proxy` can boot its HTTPS block |
+| `nginx-proxy`       | long-running   | Serves traffic; runs `inotifywait` on `/etc/letsencrypt/live` and `nginx -s reload`s on change |
+| `certbot-init`      | one-shot       | After nginx is healthy, requests the real LE cert via webroot. Idempotent (marker file). Always exits 0. |
+| `certbot-renew`     | long-running   | Every 12h: renews if a real cert exists, otherwise retries issuance. Lets the deployment self-heal. |
+
+Prerequisites:
+
+- `DOMAIN` and `CERTBOT_EMAIL` set in `.env`.
+- `DOMAIN` A/AAAA records pointing at this server's public IP.
+- Port 80 reachable from the internet (Let's Encrypt validators hit
+  `http://${DOMAIN}/.well-known/acme-challenge/...`). If you use Cloudflare
+  in front of this server, set the proxy mode to "DNS only" (gray cloud)
+  for the cert request, or switch to a DNS-01 challenge.
+
+Tunable: `RENEW_INTERVAL` in `.env` (default `12h`).
+
+Useful commands:
+
+```bash
+# Inspect cert / issuer / expiry
+docker compose run --rm certbot-renew certbot certificates
+
+# Force-renew now (e.g. after fixing DNS)
+docker compose run --rm certbot-renew certbot renew --force-renewal --webroot -w /var/www/certbot
+
+# Reset and re-request from scratch (wipes the volume — only do this if stuck)
+docker compose down
+docker volume rm simorghai-vps_certbot_certs
+docker compose up -d
+```
 
 ## Directory Structure
 
@@ -103,18 +149,35 @@ simorghai-vps/
 │   ├── Dockerfile
 │   ├── src/components/
 │   │   ├── FeaturesSection.tsx    # Product cards → EKC reverse proxy
-│   │   ├── ChatWidget.tsx         # Anthropic-powered AI chat
-│   │   ├── ChatMailSection.tsx    # Delta Chat download buttons
+│   │   ├── ChatWidget.tsx         # OpenAI-powered AI chat
+│   │   ├── ArticlesSection.tsx    # Latest blog posts (from blog-api)
 │   │   └── ...
 │   └── public/
-├── chatbot-api/                # Anthropic Claude proxy
+├── chatbot-api/                # OpenAI chat proxy
 │   ├── Dockerfile
 │   └── server.js
-├── chatmail/                   # Chatmail relay
-│   └── Dockerfile
-├── nginx/conf.d/default.conf   # Routing + reverse proxy
-├── delta-chat/                 # Pre-downloaded binaries
-├── ssl/                        # Certificates (not committed)
+├── blog-api/                   # Bilingual SEO blog + admin (Node + SQLite)
+│   ├── Dockerfile
+│   ├── package.json
+│   ├── public/                   # blog.css, admin panel assets, logo
+│   └── src/
+│       ├── server.js             # routes + page cache
+│       ├── db.js                 # SQLite (WAL) schema & queries
+│       ├── templates.js          # SSR HTML + full SEO head
+│       ├── content.js            # Markdown → safe HTML (tables/code/YouTube)
+│       ├── admin.js              # /admin panel + auth + uploads
+│       ├── seo.js                # sitemap / robots / RSS
+│       ├── seed.js               # first-run article
+│       └── ...
+├── nginx/
+│   ├── Dockerfile                 # nginx:alpine + inotify-tools
+│   ├── nginx.conf
+│   └── templates/
+│       └── default.conf.template  # ${DOMAIN} substituted at boot
+├── scripts/
+│   ├── certbot-bootstrap.sh       # one-shot: temp self-signed cert
+│   ├── certbot-init.sh            # one-shot: real LE cert via webroot
+│   ├── certbot-renew.sh           # long-running: 12h renew/retry loop
+│   └── nginx-reload-watcher.sh    # in-container inotify reloader
 └── .github/workflows/
-    └── download-deltachat.yml
 ```

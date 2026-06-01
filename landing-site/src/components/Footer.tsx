@@ -1,10 +1,9 @@
 import React from 'react';
 import { Github, Twitter, Linkedin, Mail } from 'lucide-react';
-import { Link } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 
 export function Footer() {
-  const { t, isRtl } = useLanguage();
+  const { t, isRtl, lang } = useLanguage();
 
   return (
     <footer id="contact" className="relative bg-navy-950 border-t border-white/5 pt-20 pb-10 scroll-mt-24" dir={isRtl ? 'rtl' : 'ltr'}>
@@ -23,7 +22,7 @@ export function Footer() {
             <ul className="space-y-4 text-gray-400">
               <li><a href="#services" className="hover:text-cyan-400 transition-colors">{t('footer.solutions')}</a></li>
               <li><a href="#features" className="hover:text-cyan-400 transition-colors">{t('footer.integration')}</a></li>
-              <li><a href="#chatmail" className="hover:text-cyan-400 transition-colors">{t('chatmail.title')}</a></li>
+              <li><a href={`/${lang}/blog`} className="hover:text-cyan-400 transition-colors">{t('nav.articles')}</a></li>
               <li><a href="#" className="hover:text-cyan-400 transition-colors">{t('footer.docs')}</a></li>
             </ul>
           </div>
@@ -33,7 +32,7 @@ export function Footer() {
             <ul className="space-y-4 text-gray-400">
               <li><a href="#about" className="hover:text-cyan-400 transition-colors">{t('nav.about')}</a></li>
               <li><a href="#" className="hover:text-cyan-400 transition-colors">{t('footer.careers')}</a></li>
-              <li><Link to="/articles" className="hover:text-cyan-400 transition-colors">{t('nav.articles')}</Link></li>
+              <li><a href={`/${lang}/blog`} className="hover:text-cyan-400 transition-colors">{t('nav.articles')}</a></li>
               <li><a href="#contact" className="hover:text-cyan-400 transition-colors">{t('nav.contact')}</a></li>
             </ul>
           </div>
