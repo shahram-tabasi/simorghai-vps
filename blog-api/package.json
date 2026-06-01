@@ -1,0 +1,22 @@
+{
+  "name": "simorgh-blog-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Bilingual (FA/EN) server-rendered SEO blog with a visual admin panel",
+  "type": "commonjs",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "cookie-parser": "^1.4.7",
+    "express": "^4.21.0",
+    "highlight.js": "^11.10.0",
+    "marked": "^14.1.2",
+    "multer": "^2.0.1",
+    "nodemailer": "^6.9.15",
+    "sanitize-html": "^2.13.1",
+    "sharp": "^0.33.5"
+  }
+}

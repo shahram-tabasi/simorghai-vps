@@ -10,7 +10,7 @@
 #   - certbot-init:      one-shot, requests the real LE cert via webroot
 #   - certbot-renew:     long-running, 12h renewal loop (auto-retries issuance
 #                        if the initial attempt failed)
-#   - chatmail:          Privacy-focused email relay (Delta Chat)
+#   - blog-api:          Bilingual SEO blog (SSR) + admin panel + SQLite
 #
 # Usage:
 #   cp .env.example .env && docker compose up -d
@@ -54,7 +54,6 @@ services:
       - ./scripts/nginx-reload-watcher.sh:/usr/local/bin/nginx-reload-watcher.sh:ro
       - certbot_certs:/etc/letsencrypt:ro
       - certbot_webroot:/var/www/certbot:ro
-      - ./delta-chat:/usr/share/nginx/downloads:ro
       - /opt/simorgh-articles:/usr/share/nginx/articles:ro
       - nginx_logs:/var/log/nginx
     environment:
@@ -74,6 +73,8 @@ services:
       landing-site:
         condition: service_healthy
       chatbot-api:
+        condition: service_healthy
+      blog-api:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
@@ -183,39 +184,48 @@ services:
     restart: unless-stopped
 
   # ===========================================================================
-  # CHATMAIL RELAY - Privacy-focused messaging (Delta Chat compatible)
+  # BLOG API - Bilingual (FA/EN) SEO blog with admin panel & SQLite
   # ===========================================================================
-  chatmail:
-    image: ghcr.io/shahram-tabasi/chatmail-relay:latest
-    container_name: chatmail
-    privileged: true
-    restart: unless-stopped
-    ports:
-      - "25:25"
-      - "465:465"
-      - "587:587"
-      - "143:143"
-      - "993:993"
-      - "3478:3478"
+  # Server-side rendered blog pages for top-tier SEO, a visual admin panel at
+  # /admin, image uploads, an email-capture form, and auto-generated
+  # sitemap.xml / robots.txt. Data persists in the blog_data volume.
+  blog-api:
+    build:
+      context: ./blog-api
+      dockerfile: Dockerfile
+    image: simorgh-blog-api:latest
+    container_name: blog-api
+    expose:
+      - "4000"
+    environment:
+      - PORT=4000
+      - SITE_URL=https://${DOMAIN}
+      - ADMIN_USER=${BLOG_ADMIN_USER:-admin}
+      - ADMIN_PASSWORD=${BLOG_ADMIN_PASSWORD}
+      - SESSION_SECRET=${BLOG_SESSION_SECRET}
+      # Optional SMTP for the email-capture feature (leave blank to disable)
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - SMTP_FROM=${SMTP_FROM:-}
     volumes:
-      - chatmail_var:/var
-      - chatmail_home:/home
-      - chatmail_opt:/opt
-      - chatmail_etc:/etc
-      - chatmail_root:/root
-      - chatmail_usr:/usr
-    tmpfs:
-      - /run
+      - blog_data:/data
     networks:
-      - chatmail_net
+      - frontend_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
 # =============================================================================
 # NETWORKS
 # =============================================================================
 networks:
   frontend_net:
-    driver: bridge
-  chatmail_net:
     driver: bridge
 
 # =============================================================================
@@ -225,9 +235,4 @@ volumes:
   nginx_logs:
   certbot_certs:
   certbot_webroot:
-  chatmail_var:
-  chatmail_home:
-  chatmail_opt:
-  chatmail_etc:
-  chatmail_root:
-  chatmail_usr:
+  blog_data:

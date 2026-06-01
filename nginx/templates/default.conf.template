@@ -4,7 +4,6 @@
 # Routing:
 #   /               -> Landing Site (static React app)
 #   /api/chat       -> Chatbot API (Anthropic proxy)
-#   /downloads/*    -> Delta Chat pre-downloaded binaries
 #   /chatbot/*      -> Reverse proxy to simorghai.electrokavir.com/chatbot
 #   /eplanix/*      -> Reverse proxy to simorghai.electrokavir.com/eplanix
 #   /simorgh-draft/*-> Reverse proxy to simorghai.electrokavir.com/simorgh-draft
@@ -84,34 +83,6 @@ server {
         add_header Content-Disposition "attachment";
         add_header Cache-Control "public, max-age=3600";
         add_header Access-Control-Allow-Origin "*";
-    }
-
-    # -----------------------------------------------------------------
-    # Delta Chat downloads (pre-downloaded binaries, with fallbacks)
-    # -----------------------------------------------------------------
-    location /downloads/ {
-        alias /usr/share/nginx/downloads/;
-        autoindex off;
-        expires 7d;
-        add_header Cache-Control "public";
-        try_files $uri @download_fallback;
-    }
-
-    # Fallback: redirect to official Delta Chat downloads if local files missing
-    location @download_fallback {
-        # Android APK
-        if ($uri ~* "deltachat-android\.apk$") {
-            return 302 https://download.delta.chat/android/deltachat-android-latest.apk;
-        }
-        # Linux AppImage
-        if ($uri ~* "deltachat-desktop\.AppImage$") {
-            return 302 https://download.delta.chat/desktop/deltachat-desktop-latest.AppImage;
-        }
-        # Windows exe
-        if ($uri ~* "deltachat-desktop\.exe$") {
-            return 302 https://download.delta.chat/desktop/deltachat-desktop-latest.exe;
-        }
-        return 404;
     }
 
     # -----------------------------------------------------------------
@@ -313,30 +284,6 @@ server {
         add_header Content-Disposition "attachment";
         add_header Cache-Control "public, max-age=3600";
         add_header Access-Control-Allow-Origin "*";
-    }
-
-    # -----------------------------------------------------------------
-    # Delta Chat downloads (pre-downloaded binaries, with fallbacks)
-    # -----------------------------------------------------------------
-    location /downloads/ {
-        alias /usr/share/nginx/downloads/;
-        autoindex off;
-        expires 7d;
-        add_header Cache-Control "public";
-        try_files $uri @download_fallback_ssl;
-    }
-
-    location @download_fallback_ssl {
-        if ($uri ~* "deltachat-android\.apk$") {
-            return 302 https://download.delta.chat/android/deltachat-android-latest.apk;
-        }
-        if ($uri ~* "deltachat-desktop\.AppImage$") {
-            return 302 https://download.delta.chat/desktop/deltachat-desktop-latest.AppImage;
-        }
-        if ($uri ~* "deltachat-desktop\.exe$") {
-            return 302 https://download.delta.chat/desktop/deltachat-desktop-latest.exe;
-        }
-        return 404;
     }
 
     # -----------------------------------------------------------------

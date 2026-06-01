@@ -6,7 +6,6 @@ import { FeaturesSection } from './components/FeaturesSection';
 import { ServicesSection } from './components/ServicesSection';
 import { AboutSection } from './components/AboutSection';
 import { ArticlesSection } from './components/ArticlesSection';
-import { ChatMailSection } from './components/ChatMailSection';
 import { Footer } from './components/Footer';
 import { ChatWidget } from './components/ChatWidget';
 import { ArticlesPage } from './pages/ArticlesPage';
@@ -21,7 +20,6 @@ function HomePage() {
       <ServicesSection />
       <AboutSection />
       <ArticlesSection />
-      <ChatMailSection />
       <Footer />
       <ChatWidget />
     </>
