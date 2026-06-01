@@ -1,48 +1,47 @@
 import React, { useEffect, useState } from 'react';
-import { FileText, Download, BookOpen, Tag, ArrowRight, ArrowLeft } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { FileText, BookOpen, Tag, ArrowRight, ArrowLeft } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 
-interface Article {
+// A post as returned by the blog service's lightweight JSON feed
+// (GET /:lang/blog.json). The full articles live on the server-rendered,
+// SEO-optimised blog; this section just previews the latest few.
+interface BlogPost {
   slug: string;
-  title_en: string;
-  title_fa: string;
-  summary_en: string;
-  summary_fa: string;
-  author: string;
+  url: string;
+  title: string;
+  summary: string;
+  cover_image: string;
   date: string;
   tags: string[];
-  files: {
-    en: string;
-    fa: string;
-  };
 }
 
 export function ArticlesSection() {
   const { t, lang, isRtl } = useLanguage();
-  const [articles, setArticles] = useState<Article[]>([]);
+  const [posts, setPosts] = useState<BlogPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    fetch('/articles/api/manifest')
+    setLoading(true);
+    setError(false);
+    fetch(`/${lang}/blog.json?limit=4`)
       .then((res) => {
         if (!res.ok) throw new Error('Failed to fetch');
         return res.json();
       })
-      .then((data: Article[]) => {
-        setArticles(data);
+      .then((data: BlogPost[]) => {
+        setPosts(data);
         setLoading(false);
       })
       .catch(() => {
         setError(true);
         setLoading(false);
       });
-  }, []);
+  }, [lang]);
 
-  const getTitle = (a: Article) => (lang === 'fa' ? a.title_fa : a.title_en);
-  const getSummary = (a: Article) => (lang === 'fa' ? a.summary_fa : a.summary_en);
   const ViewArrow = isRtl ? ArrowLeft : ArrowRight;
+  const blogIndex = `/${lang}/blog`;
+  const hasPosts = !loading && !error && posts.length > 0;
 
   return (
     <section
@@ -97,104 +96,84 @@ export function ArticlesSection() {
           </div>
         )}
 
-        {error && (
+        {!loading && (error || posts.length === 0) && (
           <div className="text-center py-20">
             <FileText className="w-16 h-16 text-gray-600 mx-auto mb-4" />
             <p className="text-gray-400 text-lg">{t('articles.noArticles')}</p>
           </div>
         )}
 
-        {!loading && !error && articles.length === 0 && (
-          <div className="text-center py-20">
-            <FileText className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-            <p className="text-gray-400 text-lg">{t('articles.noArticles')}</p>
-          </div>
-        )}
-
-        {!loading && !error && articles.length > 0 && (
+        {hasPosts && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
-            {articles.map((article) => (
-              <div
-                key={article.slug}
-                className="group glass-card rounded-2xl p-6 md:p-8 flex flex-col transition-all duration-300">
-                {/* Tags */}
-                {article.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    {article.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-300 text-xs font-medium">
-                        <Tag className="w-3 h-3" />
-                        {tag}
-                      </span>
-                    ))}
+            {posts.map((post) => (
+              <a
+                key={post.slug}
+                href={post.url}
+                className="group glass-card rounded-2xl overflow-hidden flex flex-col transition-all duration-300
+                           hover:border-cyan-500/30 hover:shadow-[0_0_30px_rgba(0,212,255,0.1)]">
+                {post.cover_image && (
+                  <div className="aspect-[16/9] overflow-hidden">
+                    <img
+                      src={post.cover_image}
+                      alt={post.title}
+                      loading="lazy"
+                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                    />
                   </div>
                 )}
-
-                {/* Title */}
-                <h3 className="text-xl md:text-2xl font-bold text-white mb-3 group-hover:text-cyan-400 transition-colors">
-                  {getTitle(article)}
-                </h3>
-
-                {/* Meta */}
-                <div className="flex items-center gap-4 mb-4 text-sm text-gray-500">
-                  {article.author && <span>{article.author}</span>}
-                  {article.date && (
-                    <span className="flex items-center gap-1">
-                      {article.date}
-                    </span>
+                <div className="p-6 md:p-8 flex flex-col flex-1">
+                  {/* Tags */}
+                  {post.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-4">
+                      {post.tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-300 text-xs font-medium">
+                          <Tag className="w-3 h-3" />
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
                   )}
-                </div>
 
-                {/* Summary */}
-                <p className="text-gray-300 leading-relaxed mb-6 flex-1">
-                  {getSummary(article)}
-                </p>
+                  {/* Title */}
+                  <h3 className="text-xl md:text-2xl font-bold text-white mb-3 group-hover:text-cyan-400 transition-colors">
+                    {post.title}
+                  </h3>
 
-                {/* Download buttons */}
-                <div className="flex flex-wrap gap-3 mt-auto">
-                  <a
-                    href={`/articles/files/${encodeURI(article.files.en)}`}
-                    download
-                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl
-                             bg-gradient-to-r from-cyan-500/20 to-cyan-600/20 border border-cyan-500/30
-                             text-cyan-300 text-sm font-medium
-                             hover:from-cyan-500/30 hover:to-cyan-600/30 hover:border-cyan-400/50
-                             hover:text-white transition-all duration-300">
-                    <FileText className="w-4 h-4" />
-                    <Download className="w-3.5 h-3.5" />
-                    <span>PDF — {t('articles.downloadEn')}</span>
-                  </a>
-                  <a
-                    href={`/articles/files/${encodeURI(article.files.fa)}`}
-                    download
-                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl
-                             bg-gradient-to-r from-purple-500/20 to-purple-600/20 border border-purple-500/30
-                             text-purple-300 text-sm font-medium
-                             hover:from-purple-500/30 hover:to-purple-600/30 hover:border-purple-400/50
-                             hover:text-white transition-all duration-300">
-                    <FileText className="w-4 h-4" />
-                    <Download className="w-3.5 h-3.5" />
-                    <span>PDF — {t('articles.downloadFa')}</span>
-                  </a>
+                  {/* Meta */}
+                  {post.date && (
+                    <div className="flex items-center gap-4 mb-4 text-sm text-gray-500">
+                      <span>{post.date.slice(0, 10)}</span>
+                    </div>
+                  )}
+
+                  {/* Summary */}
+                  <p className="text-gray-300 leading-relaxed mb-6 flex-1">{post.summary}</p>
+
+                  {/* Read more */}
+                  <span className="inline-flex items-center gap-2 text-cyan-300 text-sm font-medium mt-auto">
+                    {t('articles.readMore')}
+                    <ViewArrow className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+                  </span>
                 </div>
-              </div>
+              </a>
             ))}
           </div>
         )}
 
-        {/* View All Articles button */}
-        {!loading && !error && articles.length > 0 && (
+        {/* View All Articles button -> full server-rendered blog */}
+        {hasPosts && (
           <div className="text-center mt-12">
-            <Link
-              to="/articles"
+            <a
+              href={blogIndex}
               className="group inline-flex items-center gap-2 px-8 py-3.5 rounded-full
                        bg-gradient-to-r from-cyan-500 to-purple-600 text-white font-semibold
                        shadow-[0_0_20px_rgba(0,212,255,0.3)] hover:shadow-[0_0_30px_rgba(0,212,255,0.5)]
                        hover:scale-105 transition-all duration-300">
               {t('articles.viewAll')}
               <ViewArrow className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-            </Link>
+            </a>
           </div>
         )}
       </div>

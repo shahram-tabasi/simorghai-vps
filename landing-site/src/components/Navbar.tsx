@@ -17,9 +17,12 @@ export function Navbar() {
     if (el) el.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const handleNav = (id: string, link?: string) => {
+  const handleNav = (id: string, link?: string, external?: boolean) => {
     setIsOpen(false);
-    if (link) {
+    if (link && external) {
+      // The blog is a separate server-rendered app, so navigate the browser.
+      window.location.href = link;
+    } else if (link) {
       navigate(link);
     } else {
       scrollTo(id);
@@ -48,7 +51,7 @@ export function Navbar() {
     { id: 'features', label: t('nav.products') },
     { id: 'services', label: t('nav.solutions') },
     { id: 'about', label: t('nav.about') },
-    { id: 'articles', label: t('nav.articles'), link: '/articles' },
+    { id: 'articles', label: t('nav.articles'), link: `/${lang}/blog`, external: true },
     { id: 'contact', label: t('nav.contact') },
   ];
 
@@ -64,7 +67,7 @@ export function Navbar() {
           {navItems.map((item) => (
             <button
               key={item.id}
-              onClick={() => handleNav(item.id, item.link)}
+              onClick={() => handleNav(item.id, item.link, (item as any).external)}
               className={`text-sm font-medium transition-colors relative ${activeSection === item.id ? 'text-cyan-400' : 'text-gray-300 hover:text-cyan-400'}`}>
               {item.label}
               {activeSection === item.id && <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-cyan-400 rounded-full" />}
@@ -89,7 +92,7 @@ export function Navbar() {
       {isOpen && (
         <div className="absolute top-24 left-6 right-6 glass-panel rounded-2xl p-6 flex flex-col gap-4 md:hidden">
           {navItems.map((item) => (
-            <button key={item.id} onClick={() => handleNav(item.id, item.link)}
+            <button key={item.id} onClick={() => handleNav(item.id, item.link, (item as any).external)}
               className={`py-2 font-medium text-start ${activeSection === item.id ? 'text-cyan-400' : 'text-gray-300 hover:text-cyan-400'}`}>
               {item.label}
             </button>

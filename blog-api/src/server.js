@@ -17,6 +17,7 @@ const { LANGS, DEFAULT_LANG } = require('./i18n');
 const { listPage, articlePage } = require('./templates');
 const { buildSitemap, buildRobots, buildRss } = require('./seo');
 const { mailerEnabled, notifyOwner } = require('./mailer');
+const { seedIfEmpty } = require('./seed');
 const admin = require('./admin');
 
 const PORT = Number(process.env.PORT) || 4000;
@@ -88,6 +89,26 @@ app.use('/admin', admin.buildRouter());
 // /blog -> default language index.
 app.get('/blog', (req, res) => res.redirect(302, `/${DEFAULT_LANG}/blog`));
 
+// /:lang/blog.json -> lightweight JSON feed for the landing site's
+// "latest articles" section. Routed to this service by the nginx /(en|fa)/blog
+// rule, so no extra proxy config is needed.
+app.get('/:lang/blog.json', (req, res, next) => {
+  const lang = req.params.lang;
+  if (!LANGS.includes(lang)) return next();
+  const limit = Math.min(Number(req.query.limit) || 4, 20);
+  const posts = db.getPublishedPosts(lang, limit, 0).map((p) => ({
+    slug: p.slug,
+    url: `/${lang}/blog/${encodeURIComponent(p.slug)}`,
+    title: p[`title_${lang}`],
+    summary: p[`summary_${lang}`],
+    cover_image: p.cover_image,
+    date: p.published_at || p.created_at,
+    tags: (p.tags || '').split(',').map((x) => x.trim()).filter(Boolean),
+  }));
+  res.set('Access-Control-Allow-Origin', '*');
+  res.json(posts);
+});
+
 // /:lang/blog -> list
 app.get('/:lang/blog', (req, res, next) => {
   const lang = req.params.lang;
@@ -131,6 +152,13 @@ app.use((req, res) => {
     `</body></html>`
   );
 });
+
+// Seed the first article on an empty database, then start listening.
+try {
+  seedIfEmpty();
+} catch (e) {
+  console.error('[blog-api] seed failed:', e.message);
+}
 
 app.listen(PORT, () => {
   console.log(`[blog-api] listening on :${PORT} (site: ${SITE_URL}, mailer: ${mailerEnabled ? 'on' : 'off'})`);

@@ -6,16 +6,17 @@ ssl/*.pem
 ssl/*.key
 ssl/*.crt
 
-# Delta Chat binaries (downloaded via CI)
-delta-chat/*.apk
-delta-chat/*.AppImage
-delta-chat/*.exe
-
 # Node
 node_modules/
 
 # Build output
 landing-site/dist/
+
+# Blog data (SQLite DB + uploads) — lives in a Docker volume
+blog-api/data/
+*.db
+*.db-shm
+*.db-wal
 
 # Docker volumes
 data/
