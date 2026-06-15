@@ -61,10 +61,14 @@ services:
       # all other $vars in the config (e.g. $host) are left untouched.
       - DOMAIN=${DOMAIN}
       - NGINX_ENVSUBST_FILTER=^DOMAIN$$
-    # Run the inotify-based cert-reload watcher in the background so renewals
-    # take effect immediately. The image's docker-entrypoint still processes
-    # /etc/nginx/templates before this command runs.
-    command: ["/bin/sh", "-c", "/usr/local/bin/nginx-reload-watcher.sh & exec nginx -g 'daemon off;'"]
+    # The stock nginx entrypoint only runs its /docker-entrypoint.d init scripts
+    # (incl. envsubst-on-templates, which renders templates/*.template into
+    # conf.d with ${DOMAIN} substituted) when the command starts with "nginx".
+    # Since we override the command, we must run the template step ourselves
+    # first, otherwise nginx falls back to the stock default.conf and /health
+    # 404s. Then start the inotify-based cert-reload watcher in the background
+    # so renewals take effect immediately, and exec nginx in the foreground.
+    command: ["/bin/sh", "-c", "/docker-entrypoint.d/20-envsubst-on-templates.sh; /usr/local/bin/nginx-reload-watcher.sh & exec nginx -g 'daemon off;'"]
     networks:
       - frontend_net
     depends_on:
