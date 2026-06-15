@@ -70,13 +70,22 @@ cp .env.example .env
 #   BLOG_ADMIN_PASSWORD   (admin panel login)
 #   BLOG_SESSION_SECRET   (any long random string)
 
-# 3. Start
-docker compose up -d
+# 3. Build the local images and start
+docker compose up -d --build
 
 # 4. Verify
 docker compose ps
 curl http://localhost/health
 ```
+
+> **Note:** the four application images (`simorgh-nginx`, `simorgh-landing`,
+> `simorgh-chatbot-api`, `simorgh-blog-api`) are **built on this server** from the
+> Dockerfiles in this repo — they are never pulled from a registry. The
+> `pull access denied for simorgh-… repository does not exist` lines you may see
+> on a plain `docker compose up -d` are harmless: Compose tries a registry pull
+> first, then falls back to building. Passing `--build` skips that and builds
+> directly. The only image pulled from a registry is the official, public
+> `certbot/certbot`.
 
 The blog ships with one ready-made bilingual article on first run, so it is never
 blank. Sign in at `https://<DOMAIN>/admin` to write more.
