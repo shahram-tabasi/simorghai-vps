@@ -148,6 +148,19 @@ docker volume rm simorghai-vps_certbot_certs
 docker compose up -d
 ```
 
+## Mail Server (optional)
+
+A self-hosted mail server (SMTP + IMAP + antispam + DKIM) is available as a
+**separate, opt-in** compose project under [`mail/`](mail/). It uses
+[docker-mailserver](https://docker-mailserver.github.io/docker-mailserver/)
+(chosen over mailcow/Mailu because it fits a 1 vCPU / 2 GB VPS and does not use
+ports 80/443, so it coexists with the web stack). It reuses this stack's
+Let's Encrypt certificate volume for TLS.
+
+> Self-hosting mail requires outbound port 25 open, a matching rDNS/PTR record,
+> and SPF/DKIM/DMARC DNS records. See [`mail/README.md`](mail/README.md) for the
+> full runbook and prerequisites before starting it.
+
 ## Directory Structure
 
 ```

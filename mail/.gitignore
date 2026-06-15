@@ -1,0 +1,5 @@
+# Local config (copied from mailserver.env.example) — may contain tweaks
+mailserver.env
+
+# Runtime data: mailboxes, state, logs, generated DKIM keys, accounts
+docker-data/

@@ -1,0 +1,58 @@
+# =============================================================================
+# Simorgh AI VPS - Mail Server (docker-mailserver / DMS)
+# =============================================================================
+# A lightweight, full-stack mail server (SMTP + IMAP + antispam + DKIM) chosen
+# over mailcow/Mailu because it fits a 1 vCPU / 2 GB VPS and does NOT use ports
+# 80/443 (so it coexists with the nginx-proxy web stack).
+#
+# TLS: reuses the Let's Encrypt certificate volume from the main compose
+# project (../docker-compose.yml). You must first issue a cert for the mail
+# hostname — see mail/README.md.
+#
+# Usage (from the repo root):
+#   cd mail
+#   cp mailserver.env.example mailserver.env   # then edit
+#   docker compose -f compose.mail.yaml up -d
+# =============================================================================
+
+services:
+  mailserver:
+    image: ghcr.io/docker-mailserver/docker-mailserver:latest
+    container_name: mailserver
+    # FQDN of the mail host. MUST match the rDNS/PTR record of the server's
+    # public IP and the A record you create in DNS.
+    hostname: mail.simorghai.com
+    env_file: mailserver.env
+    ports:
+      - "25:25"     # inbound SMTP (server-to-server) + STARTTLS
+      - "465:465"   # submission, implicit TLS (recommended for clients)
+      - "587:587"   # submission, STARTTLS
+      - "993:993"   # IMAP, implicit TLS
+      - "143:143"   # IMAP, STARTTLS (optional; remove to force 993 only)
+    volumes:
+      - ./docker-data/dms/mail-data/:/var/mail/
+      - ./docker-data/dms/mail-state/:/var/mail-state/
+      - ./docker-data/dms/mail-logs/:/var/log/mail/
+      - ./docker-data/dms/config/:/tmp/docker-mailserver/
+      - /etc/localtime:/etc/localtime:ro
+      # Reuse the web stack's Let's Encrypt certs (read-only). DMS reads
+      # /etc/letsencrypt/live/<hostname>/ when SSL_TYPE=letsencrypt.
+      - certbot_certs:/etc/letsencrypt:ro
+    restart: unless-stopped
+    stop_grace_period: 1m
+    # fail2ban (ENABLE_FAIL2BAN=1 in mailserver.env) needs NET_ADMIN to manage
+    # the host firewall. Leave commented if fail2ban is disabled.
+    # cap_add:
+    #   - NET_ADMIN
+    healthcheck:
+      test: ["CMD-SHELL", "ss --listening --ipv4 --tcp | grep --silent ':smtp' || exit 1"]
+      timeout: 3s
+      retries: 0
+
+# The certbot_certs volume is created/managed by the main project
+# (../docker-compose.yml). We attach to it as an external volume so the mail
+# server can read the same Let's Encrypt certificates.
+volumes:
+  certbot_certs:
+    external: true
+    name: simorghai-vps_certbot_certs
